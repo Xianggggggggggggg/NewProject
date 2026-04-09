@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 面試系統 - Bidi Streaming 測試</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 600px;
+            margin: 40px auto;
+            text-align: center;
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 18px;
+            margin: 10px;
+            cursor: pointer;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            background-color: #f8f9fa;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #status {
+            margin-top: 20px;
+            color: #666;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+
+        #visualizer {
+            width: 100%;
+            max-width: 400px;
+            height: 60px;
+            background-color: #eee;
+            border-radius: 30px;
+            display: none;
+            margin: 0 auto;
+        }
+
+        #transcript {
+            margin-top: 30px;
+            text-align: left;
+            background: #f0f8ff;
+            padding: 15px;
+            border-radius: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .ai-text {
+            margin: 5px 0;
+            color: #0056b3;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>AI 面試雙向語音測試</h1>
+    <button id="startBtn">開始面試 (開啟麥克風)</button>
+    <button id="stopBtn" disabled>結束面試</button>
+    <div id="status">等待開始...</div>
+    <canvas id="visualizer"></canvas>
+
+    <div id="transcript"><strong>AI 面試官文字紀錄：</strong><br></div>
+
+    <script>
+        let ws;
+        let audioContext;
+        let mediaStream;
+        let processor;
+        let analyser;
+        let animationId;
+
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const statusDiv = document.getElementById('status');
+        const canvas = document.getElementById('visualizer');
+        const canvasCtx = canvas.getContext('2d');
+        const transcriptDiv = document.getElementById('transcript');
+
+        canvas.width = 400;
+        canvas.height = 60;
+
+        startBtn.addEventListener('click', async () => {
+            try {
+                ws = new WebSocket(`ws://${window.location.host}`);
+
+                ws.onopen = () => {
+                    statusDiv.textContent = '系統連線中...請稍候';
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    canvas.style.display = 'block';
+                    transcriptDiv.style.display = 'block';
+                };
+
+                ws.onmessage = async (event) => {
+                    const data = JSON.parse(event.data);
+
+                    if (data.setupComplete) {
+                        statusDiv.textContent = '連線成功！請直接開口說話...';
+                    }
+
+                    if (data.serverContent && data.serverContent.modelTurn) {
+                        const parts = data.serverContent.modelTurn.parts;
+                        for (const part of parts) {
+                            if (part.inlineData && part.inlineData.mimeType.startsWith('audio/pcm')) {
+                                await playAudio(part.inlineData.data);
+                            }
+                            if (part.text) {
+                                transcriptDiv.innerHTML += `<div class="ai-text">💬 ${part.text}</div>`;
+                                transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
+                            }
+                        }
+                    }
+                };
+
+                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                const source = audioContext.createMediaStreamSource(mediaStream);
+
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+
+                const bufferLength = analyser.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+
+                function draw() {
+                    animationId = requestAnimationFrame(draw);
+                    analyser.getByteFrequencyData(dataArray);
+                    let sum = 0;
+                    for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
+                    let average = sum / bufferLength;
+
+                    canvasCtx.fillStyle = '#eee';
+                    canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+                    let barWidth = Math.min((average / 128) * canvas.width * 1.5, canvas.width);
+                    canvasCtx.fillStyle = '#4285F4';
+                    canvasCtx.beginPath();
+                    canvasCtx.roundRect(0, 0, barWidth, canvas.height, 30);
+                    canvasCtx.fill();
+                }
+                draw();
+
+                processor = audioContext.createScriptProcessor(4096, 1, 1);
+                processor.onaudioprocess = (e) => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        const inputData = e.inputBuffer.getChannelData(0);
+                        const pcmData = new Int16Array(inputData.length);
+                        for (let i = 0; i < inputData.length; i++) {
+                            pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 32767;
+                        }
+                        const base64Audio = btoa(String.fromCharCode.apply(null, new Uint8Array(pcmData.buffer)));
+
+                        // 🔥 這裡就是關鍵修改處！配合 Gemini 3.1 API 將 mediaChunks 改為 audio
+                        ws.send(JSON.stringify({
+                            realtimeInput: {
+                                audio: { mimeType: "audio/pcm;rate=16000", data: base64Audio }
+                            }
+                        }));
+                    }
+                };
+
+                source.connect(processor);
+
+                const gainNode = audioContext.createGain();
+                gainNode.gain.value = 0;
+                processor.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+
+            } catch (err) {
+                console.error('錯誤:', err);
+                statusDiv.textContent = '麥克風存取失敗或連線錯誤';
+            }
+        });
+
+        stopBtn.addEventListener('click', () => {
+            if (mediaStream) mediaStream.getTracks().forEach(track => track.stop());
+            if (audioContext) audioContext.close();
+            if (ws) ws.close();
+            if (animationId) cancelAnimationFrame(animationId);
+
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            statusDiv.textContent = '面試已結束。';
+            canvas.style.display = 'none';
+        });
+
+        async function playAudio(base64Data) {
+            const binaryString = atob(base64Data);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+
+            const int16Array = new Int16Array(bytes.buffer);
+            const audioBuffer = audioContext.createBuffer(1, int16Array.length, 16000);
+            const channelData = audioBuffer.getChannelData(0);
+            for (let i = 0; i < int16Array.length; i++) {
+                channelData[i] = int16Array[i] / 32768.0;
+            }
+
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+            source.start();
+        }
+    </script>
+</body>
+
+</html>
