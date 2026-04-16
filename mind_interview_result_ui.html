@@ -1,0 +1,261 @@
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-sans); }
+  .page { padding: 1.5rem 0; }
+  .header-card {
+    background: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    padding: 1.25rem 1.5rem;
+    display: flex; align-items: center; gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  .avatar {
+    width: 52px; height: 52px; border-radius: 50%;
+    background: #E6F1FB; display: flex; align-items: center;
+    justify-content: center; font-weight: 500; font-size: 15px;
+    color: #0C447C; flex-shrink: 0;
+  }
+  .header-info { flex: 1; }
+  .candidate-name { font-size: 18px; font-weight: 500; color: var(--color-text-primary); }
+  .candidate-meta { font-size: 13px; color: var(--color-text-secondary); margin-top: 2px; }
+  .status-badge {
+    font-size: 12px; padding: 4px 12px;
+    border-radius: var(--border-radius-md);
+    background: #EAF3DE; color: #3B6D11; font-weight: 500;
+  }
+  .overall-score-card {
+    background: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    padding: 1.25rem 1.5rem;
+    display: flex; align-items: center; gap: 1.5rem;
+    margin-bottom: 1rem;
+  }
+  .score-ring-wrap { flex-shrink: 0; }
+  .score-summary { flex: 1; }
+  .score-label { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 4px; }
+  .score-headline { font-size: 28px; font-weight: 500; color: var(--color-text-primary); }
+  .score-sub { font-size: 13px; color: var(--color-text-secondary); margin-top: 4px; }
+  .recommend-flag {
+    font-size: 13px; font-weight: 500;
+    background: #EAF3DE; color: #3B6D11;
+    border-radius: var(--border-radius-md);
+    padding: 6px 14px; align-self: flex-start;
+  }
+  .metrics-grid {
+    display: grid; grid-template-columns: repeat(4, minmax(0,1fr));
+    gap: 10px; margin-bottom: 1rem;
+  }
+  .metric-card {
+    background: var(--color-background-secondary);
+    border-radius: var(--border-radius-md);
+    padding: 0.9rem 1rem;
+  }
+  .metric-label { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 6px; }
+  .metric-score { font-size: 22px; font-weight: 500; color: var(--color-text-primary); }
+  .metric-bar-bg { height: 4px; background: var(--color-border-tertiary); border-radius: 2px; margin-top: 8px; }
+  .metric-bar-fill { height: 4px; border-radius: 2px; }
+  .section-title { font-size: 14px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 10px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1rem; }
+  .panel {
+    background: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    padding: 1rem 1.25rem;
+  }
+  .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .tag {
+    font-size: 12px; padding: 4px 10px;
+    border-radius: var(--border-radius-md);
+    border: 0.5px solid var(--color-border-tertiary);
+    color: var(--color-text-secondary);
+  }
+  .tag.positive { background: #EAF3DE; color: #3B6D11; border-color: transparent; }
+  .tag.concern { background: #FAECE7; color: #993C1D; border-color: transparent; }
+  .qa-list { display: flex; flex-direction: column; gap: 8px; }
+  .qa-item {
+    background: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    padding: 1rem 1.25rem;
+    cursor: pointer;
+  }
+  .qa-item:hover { border-color: var(--color-border-secondary); }
+  .qa-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .qa-q { font-size: 13px; font-weight: 500; color: var(--color-text-primary); flex: 1; }
+  .qa-score-pill {
+    font-size: 12px; font-weight: 500; padding: 3px 10px;
+    border-radius: 999px; flex-shrink: 0;
+  }
+  .score-high { background: #EAF3DE; color: #3B6D11; }
+  .score-mid { background: #FAEEDA; color: #854F0B; }
+  .score-low { background: #FCEBEB; color: #A32D2D; }
+  .qa-a { font-size: 13px; color: var(--color-text-secondary); margin-top: 8px; line-height: 1.6; display: none; }
+  .qa-item.open .qa-a { display: block; }
+  .qa-item.open .qa-arrow { transform: rotate(90deg); }
+  .qa-arrow { font-size: 12px; color: var(--color-text-secondary); transition: transform 0.15s; margin-top: 1px; }
+  .ai-insight {
+    background: var(--color-background-secondary);
+    border-radius: var(--border-radius-lg);
+    padding: 1rem 1.25rem;
+    font-size: 13px; color: var(--color-text-secondary);
+    line-height: 1.7; margin-bottom: 1rem;
+  }
+  .ai-insight strong { font-weight: 500; color: var(--color-text-primary); }
+  .action-row { display: flex; gap: 8px; }
+  .btn {
+    font-size: 13px; font-weight: 500; padding: 8px 18px;
+    border-radius: var(--border-radius-md);
+    border: 0.5px solid var(--color-border-secondary);
+    background: transparent; cursor: pointer;
+    color: var(--color-text-primary);
+  }
+  .btn:hover { background: var(--color-background-secondary); }
+  .btn.primary {
+    background: var(--color-text-primary); color: var(--color-background-primary);
+    border-color: transparent;
+  }
+  .btn.primary:hover { opacity: 0.85; }
+  .divider { height: 0.5px; background: var(--color-border-tertiary); margin: 1rem 0; }
+</style>
+
+<h2 class="sr-only">MIND Interview — 面試結果報告</h2>
+
+<div class="page">
+
+  <div class="header-card">
+    <div class="avatar">何珈</div>
+    <div class="header-info">
+      <div class="candidate-name">何珈琦</div>
+      <div class="candidate-meta">軟體工程實習生 應徵者 ・ 雲科大資管系三年級</div>
+    </div>
+    <div class="status-badge">建議錄取</div>
+  </div>
+
+  <div class="overall-score-card">
+    <div class="score-ring-wrap">
+      <svg width="72" height="72" viewBox="0 0 72 72">
+        <circle cx="36" cy="36" r="30" fill="none" stroke="var(--color-border-tertiary)" stroke-width="6"/>
+        <circle cx="36" cy="36" r="30" fill="none" stroke="#1D9E75" stroke-width="6"
+          stroke-dasharray="153 36" stroke-dashoffset="47" stroke-linecap="round"
+          transform="rotate(-90 36 36)"/>
+        <text x="36" y="41" text-anchor="middle" font-size="16" font-weight="500" fill="var(--color-text-primary)">82</text>
+      </svg>
+    </div>
+    <div class="score-summary">
+      <div class="score-label">綜合面試評分</div>
+      <div class="score-headline">82 <span style="font-size:14px;color:var(--color-text-secondary);font-weight:400;">/ 100</span></div>
+      <div class="score-sub">面試時長 24 分鐘 ・ 回答問題 7 題 ・ 2025-07-15</div>
+    </div>
+    <div class="recommend-flag">推薦進入下一輪</div>
+  </div>
+
+  <div class="metrics-grid">
+    <div class="metric-card">
+      <div class="metric-label">技術能力</div>
+      <div class="metric-score">85</div>
+      <div class="metric-bar-bg"><div class="metric-bar-fill" style="width:85%;background:#1D9E75;"></div></div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">表達流暢度</div>
+      <div class="metric-score">78</div>
+      <div class="metric-bar-bg"><div class="metric-bar-fill" style="width:78%;background:#378ADD;"></div></div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">邏輯思維</div>
+      <div class="metric-score">80</div>
+      <div class="metric-bar-bg"><div class="metric-bar-fill" style="width:80%;background:#7F77DD;"></div></div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">學習潛力</div>
+      <div class="metric-score">90</div>
+      <div class="metric-bar-bg"><div class="metric-bar-fill" style="width:90%;background:#639922;"></div></div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="section-title">亮點</div>
+      <div class="tag-list">
+        <span class="tag positive">YOLOv8 實作經驗</span>
+        <span class="tag positive">資安背景紮實</span>
+        <span class="tag positive">主動性強</span>
+        <span class="tag positive">學習意願高</span>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="section-title">待觀察</div>
+      <div class="tag-list">
+        <span class="tag concern">實際團隊協作經驗少</span>
+        <span class="tag concern">回答偶有停頓</span>
+        <span class="tag">英語簡報待加強</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="ai-insight">
+    <strong>AI 綜合評析：</strong>何珈琦在技術面表現突出，對 YOLOv8 模型訓練與資安滲透測試均有清楚的實作說明，展現出超越同年級的工程成熟度。表達上偶有遲疑，但思路條理分明。INFP 特質在溝通中體現為細膩與耐心，適合需要長期深入研究的崗位。<strong>建議進入技術測驗輪</strong>，重點評估系統設計與協作情境應對能力。
+  </div>
+
+  <div class="section-title" style="margin-bottom:10px;">逐題問答紀錄</div>
+  <div class="qa-list" id="qaList">
+    <div class="qa-item">
+      <div class="qa-header">
+        <div class="qa-q">Q1. 請簡單介紹你自己以及你在資安與 AI 方面的主要專案經歷</div>
+        <span class="qa-score-pill score-high">9/10</span>
+        <span class="qa-arrow">›</span>
+      </div>
+      <div class="qa-a">應聘者流暢地介紹了雲科大資管背景，並清楚說明 YOLOv8 物件偵測專案與 CTF 資安競賽的具體成果，展現對自身技術棧的熟悉度。</div>
+    </div>
+    <div class="qa-item">
+      <div class="qa-header">
+        <div class="qa-q">Q2. 能詳細說明你的 YOLOv8 專案嗎？資料集怎麼取得？如何調參？</div>
+        <span class="qa-score-pill score-high">8/10</span>
+        <span class="qa-arrow">›</span>
+      </div>
+      <div class="qa-a">清楚說明了自建資料集的標注流程與 Augmentation 策略，對 mAP 指標有正確理解，但對 anchor 調整的原因解釋稍顯模糊。</div>
+    </div>
+    <div class="qa-item">
+      <div class="qa-header">
+        <div class="qa-q">Q3. 你在資安領域最熟悉的攻擊向量是什麼？能舉例說明防禦方式嗎？</div>
+        <span class="qa-score-pill score-high">8/10</span>
+        <span class="qa-arrow">›</span>
+      </div>
+      <div class="qa-a">以 SQL Injection 與 XSS 為例進行了有條理的說明，並提及 WAF 及 Parameterized Query 的防禦機制，回答具體。</div>
+    </div>
+    <div class="qa-item">
+      <div class="qa-header">
+        <div class="qa-q">Q4. 如果你加入團隊，遇到技術分歧你會怎麼溝通？</div>
+        <span class="qa-score-pill score-mid">7/10</span>
+        <span class="qa-arrow">›</span>
+      </div>
+      <div class="qa-a">回答較為理論化，缺乏具體實際案例支撐，但態度誠懇，表達出願意學習團隊協作的意願。</div>
+    </div>
+    <div class="qa-item">
+      <div class="qa-header">
+        <div class="qa-q">Q5. 你對這份實習最期待什麼？三年後你希望成為怎樣的工程師？</div>
+        <span class="qa-score-pill score-high">8/10</span>
+        <span class="qa-arrow">›</span>
+      </div>
+      <div class="qa-a">目標清晰，表達希望在 AI 安全交叉領域深耕，長期目標有說服力，顯示出對職涯的認真思考。</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="action-row">
+    <button class="btn primary" onclick="sendPrompt('幫我根據這份面試結果，起草一封給何珈琦的錄取通知信')">起草錄取通知 ↗</button>
+    <button class="btn" onclick="sendPrompt('幫我產出何珈琦的 MIND Interview Word 版評估報告')">匯出報告 ↗</button>
+    <button class="btn" onclick="sendPrompt('根據面試結果，建議第二輪技術測驗的題目設計')">規劃下一輪 ↗</button>
+  </div>
+
+</div>
+
+<script>
+document.getElementById('qaList').addEventListener('click', e => {
+  const item = e.target.closest('.qa-item');
+  if (item) item.classList.toggle('open');
+});
+</script>
