@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>個人資料 - AI 智慧面試系統</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.6/dist/umd/supabase.js"></script>
+</head>
+<body>
+  <div id="topbar-container"></div>
+  <div id="sidebar-container"></div>
+
+  <div class="section-container active">
+    <div class="setting-group">
+      <h3>基本資料</h3>
+      <div class="setting-box glass-panel" style="display: flex; flex-direction: column; gap: 20px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+          <div><label class="profile-label">帳號 Username (登入用)</label><input type="text" class="reg-input" value="student01" disabled style="background: rgba(0,0,0,0.05);"></div>
+          <div><label class="profile-label">顯示姓名 Full Name</label><input type="text" class="reg-input" value="林同學"></div>
+        </div>
+        <button class="btn-green" style="width: 150px; align-self: flex-end; padding: 12px 0;" onclick="alert('已儲存！')">儲存基本資料</button>
+      </div>
+    </div>
+    <div class="setting-group">
+      <h3>隱私設定</h3>
+      <div class="setting-box glass-panel" style="display: flex; flex-direction: column; gap: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div><div style="font-weight: bold; font-size: 16px;">自動發送面試評估報告</div></div>
+          <label class="toggle-switch"><input type="checkbox" checked><span class="slider"></span></label>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="js/app.js"></script>
+</body>
+</html>
