@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>面試中 - AI 智慧面試系統</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="section-container active" id="interview-section" style="padding-top: 50px;">
+    <div class="interview-layout">
+      <div class="video-area"><video id="localVideo" autoplay playsinline muted></video></div>
+      <div class="transcript-area glass-panel" id="transcriptBox">
+        <div class="ai-msg">系統：正在建立安全連線...</div>
+        <div class="ai-msg">AI 面試官：你好，我是今天的 AI 面試官。我們已經收到你的履歷，請先簡單做個自我介紹。</div>
+      </div>
+    </div>
+    <div class="controls"><button class="btn-end" onclick="endInterview()">結束面試</button></div>
+  </div>
+  <script src="js/app.js"></script>
+</body>
+</html>
