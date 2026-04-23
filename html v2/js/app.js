@@ -1,3 +1,8 @@
+// 初始化 Supabase
+// ⚠️ 請替換為你專案的真實 URL 與 Anon Key
+const SUPABASE_URL = 'https://tnmbxhspwhsdsmtseagv.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_Zt6dxfV6KeV13_6y_REW_A_M0_uWKPq';
+const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // ================= 1. 初始化與載入共用組件 =================
 async function loadComponents() {
   const sidebarContainer = document.getElementById('sidebar-container');
@@ -62,37 +67,99 @@ function loginSuccess() { navTo('lobby-section', '大廳'); }
 function openRegisterModal() { document.getElementById('register-modal-overlay').style.display = 'flex'; }
 function closeRegisterModal() { document.getElementById('register-modal-overlay').style.display = 'none'; }
 
-function handleRegisterSubmit() {
-  const user = document.getElementById('reg-username').value;
+// 🌟 註冊：建立 Auth 帳號並同步寫入 Applicants 資料表
+async function handleRegisterSubmit() {
+  const name = document.getElementById('reg-name').value.trim();
+  const username = document.getElementById('reg-username').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
   const pass = document.getElementById('reg-password').value;
   const confirm = document.getElementById('reg-confirm').value;
-  if (!user || !pass) return alert("請輸入帳號跟密碼！");
+
+  if (!name || !username || !email || !pass) return alert("所有欄位皆為必填！");
   if (pass !== confirm) return alert("兩次輸入的密碼不一致！");
 
-  let usersDB = JSON.parse(localStorage.getItem('myAppUsers')) || {};
-  if (usersDB[user]) return alert("這個帳號已經被註冊過囉！");
-  
-  usersDB[user] = pass;
-  localStorage.setItem('myAppUsers', JSON.stringify(usersDB));
-  alert("註冊成功！可以登入了。");
+  // 1. 在 Supabase Auth 建立帳號
+  const { data: authData, error: authError } = await _supabase.auth.signUp({
+    email: email,
+    password: pass
+  });
+
+  if (authError) return alert("註冊失敗：" + authError.message);
+
+  // 2. 帳號建立成功後，將個資寫入 Applicants 資料表
+  if (authData.user) {
+    const { error: dbError } = await _supabase
+      .from('applicants') // ⚠️ 請確認你的資料表名稱大小寫
+      .insert([
+        {
+          applicant_id: authData.user.id, // 關聯 Auth 的 User ID
+          username: username,
+          name: name,
+          email: email
+        }
+      ]);
+
+    if (dbError) {
+      console.error("個資儲存失敗:", dbError);
+      return alert("帳號已建立，但個資寫入失敗：" + dbError.message);
+    }
+  }
+
+  alert("註冊成功！請登入。");
   closeRegisterModal();
 }
 
-function handleLogin() {
-  const user = document.getElementById('username').value;
+// 🌟 登入：先用帳號查信箱，再執行驗證
+async function handleLogin() {
+  const username = document.getElementById('username').value.trim(); // 你的 HTML 裡 id 為 username
   const pass = document.getElementById('password').value;
-  if (!user || !pass) return alert("請輸入帳號跟密碼！");
+  
+  if (!username || !pass) return alert("請輸入帳號跟密碼！");
 
-  let usersDB = JSON.parse(localStorage.getItem('myAppUsers')) || {};
-  if (usersDB[user] && usersDB[user] === pass) {
-    window.location.href = 'lobby.html';
-  } else {
-    alert("登入失敗：帳號或密碼錯誤！");
+  try {
+    // 步驟 A：從 applicants 資料表找出該帳號對應的真實信箱
+    const { data: userData, error: dbError } = await _supabase
+      .from('applicants')
+      .select('email')
+      .eq('username', username)
+      .single();
+
+    if (dbError || !userData) {
+      return alert("登入失敗：找不到此帳號，請檢查名稱是否正確。");
+    }
+
+    // 步驟 B：使用查到的信箱與密碼進行登入
+    const { error: authError } = await _supabase.auth.signInWithPassword({
+      email: userData.email,
+      password: pass
+    });
+
+    if (authError) {
+      alert("登入失敗：密碼錯誤！");
+    } else {
+      // 登入成功
+      window.location.href = 'lobby.html';
+    }
+  } catch (err) {
+    console.error("登入異常:", err);
+    alert("系統連線發生問題。");
   }
 }
 
-function guestLogin() { window.location.href = 'lobby.html'; }
-function logout() { alert("已登出系統"); window.location.href = 'index.html'; }
+function guestLogin() { 
+  alert("您正以「訪客身分」登入！\n可以正常體驗系統與漢堡選單，但無法將履歷儲存至 Supabase 雲端資料庫喔。");
+  
+  // 直接跳轉到大廳頁面，大廳載入時會自動生成漢堡選單
+  window.location.href = 'lobby.html'; 
+}
+
+async function logout() { 
+  const { error } = await _supabase.auth.signOut();
+  if (!error) {
+    alert("已登出系統");
+    window.location.href = 'index.html'; 
+  }
+}
 
 // ================= 4. 履歷管理邏輯 =================
 function renderResumes() {
