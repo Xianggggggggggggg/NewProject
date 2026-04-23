@@ -1,7 +1,7 @@
 // 初始化 Supabase
 // ⚠️ 請替換為你專案的真實 URL 與 Anon Key
 const SUPABASE_URL = 'https://tnmbxhspwhsdsmtseagv.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_Zt6dxfV6KeV13_6y_REW_A_M0_uWKPq';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRubWJ4aHNwd2hzZHNtdHNlYWd2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTUxMTksImV4cCI6MjA5MTI5MTExOX0.l07PlK7R9-yMnND2pDjw02EFQBs7Vfc_H6VIPBjwbo0';
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // ================= 1. 初始化與載入共用組件 =================
 async function loadComponents() {
