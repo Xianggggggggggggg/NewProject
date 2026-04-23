@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>面試設定 - AI 智慧面試系統</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.6/dist/umd/supabase.js"></script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="topbar-container"></div>
+  <div id="sidebar-container"></div>
+
+  <div class="section-container active" style="align-items: center;">
+    <div id="setup-step-1" class="setup-step active">
+      <h2 style="color: var(--primary-green); margin-bottom: 40px; font-size: 32px;">① 選擇面試職位</h2>
+      <div class="glass-panel" style="padding: 40px; width: 100%; max-width: 600px; display: flex; flex-direction: column; gap: 25px;">
+        <div><label class="profile-label">面試類型</label><select id="setup-type" class="reg-input" style="margin-bottom: 0;"><option value="技術面試">技術面試</option><option value="行為面試">行為面試</option></select></div>
+        <div><label class="profile-label">應徵職位</label><input type="text" id="setup-position" class="reg-input" placeholder="例如：前端工程師" style="margin-bottom: 0;"></div>
+      </div>
+      <button class="btn-green" style="width: 250px; margin-top: 40px; padding: 16px;" onclick="goToSetupStep2()">下一步：選擇履歷</button>
+    </div>
+
+    <div id="setup-step-2" class="setup-step">
+      <h2 style="color: var(--primary-green); margin-bottom: 40px; font-size: 32px;">② 選擇投遞的 Resume</h2>
+      <div class="resume-grid" id="setup-resume-grid" style="justify-content: center; width: 100%;"></div>
+      <div style="display: flex; gap: 20px; margin-top: 50px;">
+        <button class="btn-glass" style="width: 150px; padding: 16px;" onclick="goToSetupStep1()">上一步</button>
+        <button class="btn-green" style="width: 250px; padding: 16px;" onclick="beginInterview()">進入面試畫面</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="resume-form-overlay" class="modal-overlay">
+    <div class="register-modal resume-form-modal">
+      <h2 id="resume-modal-title">新增履歷</h2>
+      <p>完整的履歷能幫助 AI 面試官更精準地提問</p>
+      <input type="hidden" id="res-id">
+      <input type="text" id="res-name" class="reg-input" placeholder="姓名 (必填)">
+      <div style="display: flex; gap: 10px;">
+        <input type="text" id="res-edu" class="reg-input" style="flex: 1;" placeholder="最高學歷 (例：XX大學 XX系)">
+        <select id="res-gender" class="reg-input" style="flex: 1;">
+          <option value="" disabled selected>選擇性別</option><option value="男">男</option><option value="女">女</option><option value="不透露">不透露</option>
+        </select>
+      </div>
+      <input type="text" id="res-lang" class="reg-input" placeholder="語言能力 (例如：英文 多益 850)">
+      <textarea id="res-exp" class="reg-input" placeholder="工作與專案經歷 (可條列式填寫)"></textarea>
+      <textarea id="res-bio" class="reg-input" placeholder="自傳或個人簡介 (約 100-300 字)"></textarea>
+      <button class="btn-reg-submit" onclick="saveResume()">儲存履歷</button>
+      <a class="back-link" onclick="closeResumeFormModal()">取消並關閉</a>
+    </div>
+  </div>
+  
+
+  <script src="js/app.js" defer></script>
+</body>
+</html>

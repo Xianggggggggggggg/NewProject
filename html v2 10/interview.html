@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>面試中 - AI 智慧面試系統</title>
+  
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.6/dist/umd/supabase.js"></script>
+
+  <link rel="stylesheet" href="css/style.css">
+  
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div class="section-container active" id="interview-section" style="padding-top: 50px;">
+    <div class="interview-layout">
+      <div class="video-area">
+          <video id="localVideo" autoplay playsinline muted></video>
+      </div>
+      <div class="transcript-area glass-panel" id="transcriptBox">
+        <div class="ai-msg">系統：正在建立安全連線...</div>
+        <div class="ai-msg">AI 面試官：你好，我是今天的 AI 面試官。我們已經收到你的履歷，請先簡單做個自我介紹。</div>
+      </div>
+    </div>
+    <div class="controls">
+        <button class="btn-end" onclick="handleEndInterview()">結束面試</button>
+    </div>
+  </div>
+
+  <script>
+    // ================= 辨識閾值設定 =================
+    const EAR_THRESHOLD = 0.20;
+    const SMILE_THRESHOLD = 1.45;
+    const FROWN_THRESHOLD = 0.015;
+
+    let faceMesh = null;
+    let cameraUtil = null;
+    let isEyeClosed = false;
+
+    // 🌟 這是傳給 app.js 儲存的數據核心
+    window.interviewSessionData = {
+        total_frames: 0,
+        blink_count: 0,
+        happy_frames: 0,
+        neutral_frames: 0,
+        sad_frames: 0,
+        emotion_joy: 0,
+        emotion_neutral: 0,
+        emotion_anxiety: 0,
+        eye_contact_rate: 0.85,
+        confidence_score: 100
+    };
+
+    // ================= 核心計算工具 =================
+    function calcDistance(p1, p2) { return Math.hypot(p1.x - p2.x, p1.y - p2.y); }
+
+    function calculateEAR(landmarks, eyeIndices) {
+        const p1 = landmarks[eyeIndices[0]], p2 = landmarks[eyeIndices[1]];
+        const p3 = landmarks[eyeIndices[2]], p4 = landmarks[eyeIndices[3]];
+        const p5 = landmarks[eyeIndices[4]], p6 = landmarks[eyeIndices[5]];
+        return (calcDistance(p2, p6) + calcDistance(p3, p5)) / (2.0 * calcDistance(p1, p4));
+    }
+
+    function calculateSmile(landmarks) {
+        const mouthWidth = calcDistance(landmarks[61], landmarks[291]);
+        const eyeDist = calcDistance(landmarks[133], landmarks[362]);
+        return eyeDist !== 0 ? (mouthWidth / eyeDist) : 0;
+    }
+
+    function calculateFrown(landmarks) {
+        return ((landmarks[61].y + landmarks[291].y) / 2.0) - landmarks[14].y;
+    }
+
+    // ================= MediaPipe 初始化 =================
+    function setupFaceMesh() {
+        if (faceMesh) return;
+        
+        faceMesh = new FaceMesh({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+        }});
+        
+        faceMesh.setOptions({
+            maxNumFaces: 1,
+            refineLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        faceMesh.onResults((results) => {
+            if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+                const landmarks = results.multiFaceLandmarks[0];
+                const data = window.interviewSessionData;
+                
+                data.total_frames++;
+
+                // 計算特徵
+                const smile_ratio = calculateSmile(landmarks);
+                const frown_score = calculateFrown(landmarks);
+                const left_ear = calculateEAR(landmarks, [33, 160, 158, 133, 153, 144]);
+                const right_ear = calculateEAR(landmarks, [362, 385, 387, 263, 373, 380]);
+                const avg_ear = (left_ear + right_ear) / 2.0;
+
+                // 眨眼偵測
+                if (avg_ear < EAR_THRESHOLD && !isEyeClosed) {
+                    data.blink_count++;
+                    isEyeClosed = true;
+                } else if (avg_ear >= EAR_THRESHOLD) {
+                    isEyeClosed = false;
+                }
+
+                // 情緒分類統計
+                if (smile_ratio > SMILE_THRESHOLD) {
+                    data.happy_frames++;
+                } else if (frown_score > FROWN_THRESHOLD) {
+                    data.sad_frames++;
+                } else {
+                    data.neutral_frames++;
+                }
+
+                // 換算為百分比數據 (供 Supabase 使用)
+                if (data.total_frames > 0) {
+                    data.emotion_joy = parseFloat((data.happy_frames / data.total_frames).toFixed(2));
+                    data.emotion_anxiety = parseFloat((data.sad_frames / data.total_frames).toFixed(2));
+                    data.emotion_neutral = parseFloat((data.neutral_frames / data.total_frames).toFixed(2));
+                    
+                    // 自信評分：焦慮佔比權重最高
+                    let baseScore = 100 - (data.emotion_anxiety * 60) - (data.blink_count * 0.1);
+                    data.confidence_score = Math.max(0, Math.min(100, Math.round(baseScore)));
+                }
+            }
+        });
+    }
+
+    async function startInterviewAI() {
+        const videoElement = document.getElementById('localVideo');
+        setupFaceMesh();
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: 640, height: 480 }, 
+                audio: true 
+            });
+            videoElement.srcObject = stream;
+
+            cameraUtil = new Camera(videoElement, {
+                onFrame: async () => {
+                    await faceMesh.send({image: videoElement});
+                },
+                width: 640,
+                height: 480
+            });
+            cameraUtil.start();
+            console.log("✅ AI 視覺偵測系統啟動");
+        } catch (err) { 
+            console.error("相機啟動失敗:", err);
+            alert("無法啟動相機，請檢查權限設定。"); 
+        }
+    }
+
+    // 封裝一個處理函數，確保先停掉相機再執行 app.js 的 endInterview
+    async function handleEndInterview() {
+        console.log("正在結束面試並上傳數據...", window.interviewSessionData);
+        if (typeof endInterview === 'function') {
+            await endInterview(); // 呼叫 app.js 中的函數
+        } else {
+            console.error("找不到 app.js 中的 endInterview 函數");
+            window.location.href = 'result.html';
+        }
+    }
+
+    window.addEventListener('load', startInterviewAI);
+  </script>
+
+  <script src="js/app.js" defer></script>
+</body>
+</html>
