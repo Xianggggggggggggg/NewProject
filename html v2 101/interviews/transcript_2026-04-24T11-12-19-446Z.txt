@@ -1,0 +1,16 @@
+=== AI 面試紀錄 (2026/4/24 下午7:12:19) ===
+
+[AI 內心筆記]: **Begin the Interview**
+
+Okay, I'm analyzing the request. The user is ready to begin a job interview, specifically answering the first question. My persona is set: I'm a professional Taiwanese interviewer, aiming for a natural, conversational tone.
+
+
+
+[AI 內心筆記]: **Crafting the Introduction**
+
+Now, I'm composing the opening question. My approach leans towards formality, yet aims for a comfortable atmosphere for the interviewee. I'll stick with Traditional Chinese, to maintain authenticity. The plan is to present the standard, open-ended "Please introduce yourself" question to initiate the interview.
+
+
+
+[AI面試官]: 你好。很高興你準備好了。那我們就直接開始喔。首先，請先用一到兩分鐘的時間，簡短做個自我介紹，讓我們瞭解一下你的背景跟優勢。請開始。
+
