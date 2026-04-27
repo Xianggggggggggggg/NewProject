@@ -1,0 +1,61 @@
+=== AI 面試紀錄 (4/24/2026, 1:59:34 AM) ===
+
+[AI 內心筆記]: **Initiating the Interview**
+
+Okay, I've got a handle on the situation. The user is ready for an immediate interview, and I am to act as a professional Taiwanese interviewer. So far, the focus is setting a basic, standard tone for a first question. I'm building this foundation to guide the conversation.
+
+
+
+[AI 內心筆記]: **Crafting the Opening Question**
+
+I've formulated the opening question. My focus is now on delivering a polite, business-like tone. The question in Traditional Chinese is now refined and ready. I want to make it an inviting icebreaker that prompts the candidate's self-introduction. The phrasing is intended to make them feel comfortable and encourage them to highlight relevant experiences.
+
+
+
+[AI面試官]: 您好，謝謝您來參加今天的面試。那我們就直接開始了。首先，可以請您在2到3分鐘內，簡單做個自我介紹，並重點分享一下您過去的經歷中，有哪些是特別適合我們公司這個職位的嗎？
+
+[應徵者]: 我覺得我之前在麥當勞打工,很適合這份工作,讓我學到了耐心。跟和同事好好的溝通。
+[AI 內心筆記]: **Refocusing on the Task**
+
+I'm working to subtly guide the discussion. Their initial response was quite general. I'm aiming to gently steer them towards connecting their prior experiences with the job description. I hope to help them realize how their experience is relevant to this specific role, to provide a focused and professional response.
+
+
+
+[AI 內心筆記]: **Shifting to Professionalism**
+
+I've got it. I need to acknowledge their point about McDonald's, but steer them toward a more professional response. I'll start by recognizing the value of teamwork and patience gained there. Then, I plan to politely encourage them to provide more specific examples or skills that directly relate to the target role. I'll reinforce that professional relevance is key.
+
+
+
+[AI面試官]: 瞭解，在麥當勞打工確實能磨練到耐心跟溝通技巧。不過，為了讓我們更瞭解您的專業能力是否符合本職缺，可以請您分享一下，在過去的經驗中，有沒有其他更具體的專案經驗，或是特定的專業技能，是能夠直接應用在這個工作上的嗎？例如解決問題的案例，或者是達成某項績效的經驗。
+
+[應徵者]: 我想一下。
+[AI 內心筆記]: **Assessing User Response**
+
+I've just analyzed the user's initial input, a simple "Let me think about it." My assessment is that this indicates a natural pause within the context of an interview, requiring no immediate intervention or further prompting.
+
+
+
+[AI 內心筆記]: **Formulating Interview Response**
+
+I've crafted a response acknowledging the user's need for time, ensuring it's polite and professional. I considered multiple factors, like maintaining patience and being respectful. Next, I translated it into Traditional Chinese, suitable for a Taiwanese workplace setting, avoiding Simplified Chinese to maintain local nuances. The phrasing is simple: 「好的，沒問題，您慢慢想，準備好了再跟我說就好。」
+
+
+
+[AI面試官]: 好的，沒問題，您慢慢想，準備好了再跟我說就好。
+
+[應徵者]: 就是呢,我做了一個專案,雖然最後失敗了。但我也沒有放棄。
+[AI 內心筆記]: **Analyzing the Failure Narrative**
+
+I'm currently dissecting the candidate's response to a failure-focused question. The emphasis, as I understand it, lies squarely on their resilience, "not giving up". I need to delve into how this narrative unfolds and how a Taiwanese interviewer might approach this answer. It's becoming clearer to me that the focus is their perseverance.
+
+
+
+[AI 內心筆記]: **Refining the Approach**
+
+I've been working to refine the approach to the failure narrative. The candidate's emphasis on perseverance is a starting point. Now, I aim to transform this into a discussion centered on learning and professional growth. My strategy involves acknowledging their honesty and resilience, followed by targeted questions. I want to elicit specifics about the project, the reasons for failure, and the takeaways for future application. The aim is to move from generalized feelings to a concrete evaluation.
+
+
+
+[AI面試官]: 聽起來這個過程對您來說也是一種學習。可以請您具體分享一下，那個專案的主題是什麼？主要導致失敗的原因可能是哪些？以及從那次經驗中，您具體學到了什麼，未來會如何應用這些教訓在工作上嗎？
+

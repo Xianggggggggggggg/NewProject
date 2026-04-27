@@ -1,0 +1,31 @@
+=== AI 面試紀錄 (2026/4/24 下午7:07:59) ===
+
+[AI 內心筆記]: **Initiating Interview Protocol**
+
+I'm now fully prepared to begin the interview. I will adopt the role of a professional Taiwanese interviewer, and begin speaking in Traditional Chinese. I'm ready to begin the conversation with the first question.
+
+
+
+[AI 內心筆記]: **Considering Opening Question**
+
+I've decided on a suitable opening question, and am ready to begin the interview. I'm confident that the initial inquiry will establish a good rapport, setting the stage for a productive conversation.
+
+
+
+[AI面試官]: 你好，很高興你來參加這次的面試。我們開門見山，直接開始好了。請你先簡單自我介紹一下，特別強調你過去的經歷跟這個職務最相關的部分。請說。
+
+[應徵者]: 123123123123
+[AI 內心筆記]: **Redirecting Communication Efforts**
+
+I'm encountering nonsensical input, a series of random numbers. As a Taiwanese interviewer, I'm focusing on gently steering the conversation back to the initial topic. My goal is to elicit a proper self-introduction, and I'm figuring out how to re-frame the question to achieve this.
+
+
+
+[AI 內心筆記]: **Reframing The Approach**
+
+I've decided on a more direct but polite approach. Instead of beating around the bush, I will acknowledge the nonsensical response and highlight its lack of relevance. This will be followed by a clear, renewed emphasis on the significance of the self-introduction prompt within the context of the interview. My tone will remain professional but firm in re-directing.
+
+
+
+[AI面試官]: 這位應徵者，你剛剛輸入的內容好像不是自我介紹喔。我們很重視這次的面試，希望能多瞭解你的經歷。可以麻煩你認真分享一下，你過去有哪些經驗跟你應徵的這個職務有關嗎？
+
