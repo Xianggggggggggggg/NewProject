@@ -16,6 +16,148 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 app.use(express.static('public'));
+// =====================================================================
+// 🌟 面試結果報告生成 API 區塊 (對接 result.html)
+// =====================================================================
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+app.use(express.json()); // 確保 Express 能解析 POST body 中的 JSON
+
+// 1. 取得指定 session_id 的對話紀錄
+app.get('/api/transcript', async (req, res) => {
+    // 🌟 從網址參數抓取 session_id (例如：/api/transcript?session_id=xxxx)
+    const { session_id } = req.query;
+
+    // 防呆：如果前端沒有傳 session_id，直接擋掉並回傳錯誤
+    if (!session_id) {
+        return res.status(400).json({ error: "缺少 session_id 參數" });
+    }
+
+    try {
+        // 從 Supabase 撈取特定場次的面試逐字稿
+        const { data, error } = await supabase
+            .from('transcripts')
+            .select('text_content')
+            .eq('session_id', session_id) // 🌟 核心：加入這行進行精準條件限制
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (error || !data) {
+            return res.status(404).json({ error: "找不到該場次的對話紀錄" });
+        }
+
+        res.json({ transcript: data.text_content });
+    } catch (err) {
+        console.error('❌ 獲取對話紀錄失敗:', err);
+        res.status(500).json({ error: "伺服器錯誤" });
+    }
+});
+// 2. 取得指定場次的履歷與面試資訊
+app.get('/api/resume', async (req, res) => {
+    const { session_id } = req.query;
+    if (!session_id) return res.status(400).json({ error: "缺少 session_id 參數" });
+
+    try {
+        // 先找面試場次資訊
+        const { data: sessionData, error: sessionErr } = await supabase
+            .from('interview_sessions')
+            .select('resume_id, applied_position, start_time')
+            .eq('session_id', session_id)
+            .single();
+
+        if (sessionErr || !sessionData) throw new Error("找不到面試場次");
+
+        // 🚨 防呆機制：如果這場連線沒有綁定到履歷 ID，給予預設值讓系統繼續跑
+        if (!sessionData.resume_id) {
+            console.warn(`⚠️ 警告：Session ${session_id} 缺少 resume_id，使用預設值回傳。`);
+            return res.json({
+                name: "未綁定履歷",
+                apply_role: sessionData.applied_position || "未指定",
+                education: "未提供學歷",
+                interview_date: new Date(sessionData.start_time).toLocaleDateString()
+            });
+        }
+
+        // 去 Resumes 表找履歷細節
+        const { data: resumeData, error: resumeErr } = await supabase
+            .from('resumes')
+            .select('resume_name, education')
+            .eq('resume_id', sessionData.resume_id)
+            .single();
+
+        if (resumeErr) throw new Error("找不到對應履歷");
+
+        res.json({
+            name: resumeData.resume_name,
+            apply_role: sessionData.applied_position || "未指定",
+            education: resumeData.education || "未提供學歷",
+            interview_date: new Date(sessionData.start_time).toLocaleDateString()
+        });
+
+    } catch (err) {
+        console.error('❌ 獲取履歷失敗:', err);
+        res.status(500).json({ error: "履歷讀取失敗" });
+    }
+});
+// 3. 呼叫 Gemini 產生結構化面試報告 (強制輸出 JSON)
+app.post('/api/generate-report', async (req, res) => {
+    const { transcript } = req.body;
+
+    if (!transcript) {
+        return res.status(400).json({ error: "缺少對話紀錄" });
+    }
+
+    try {
+        console.log("🧠 正在生成 AI 面試報告...");
+
+        const model = genAI.getGenerativeModel({
+            model: "gemini-2.5-pro",
+            generationConfig: {
+                // 🌟 關鍵設定：強制 AI 回傳標準 JSON 格式
+                responseMimeType: "application/json",
+            }
+        });
+
+        // 這裡的 JSON 結構是完全依照你同學 result.html 內 renderReport() 函數所需欄位設計的
+        const prompt = `
+        你是一位嚴格且專業的 HR 招募專家與面試官。
+        請深度分析以下的面試對話紀錄，並給出客觀的評估。
+
+        【對話紀錄】：
+        ${transcript}
+
+        【任務要求】：
+        請務必根據上述對話，嚴格按照以下 JSON 格式回傳報告（不要加上任何其他說明文字）：
+        {
+            "grade": "給予 A, B, C 或 D 的評等",
+            "grade_title": "一句話總結表現 (如：表現優異、具備潛力、需加強經驗等)",
+            "overall_score": 0到100的整數綜合評分,
+            "summary": "150字以內的整體面試表現總結評語",
+            "highlights": ["亮點1", "亮點2", "亮點3"],
+            "concerns": ["待觀察或需加強的點1", "待觀察或需加強的點2"],
+            "qa": [
+                {
+                    "question": "還原面試官當時問的具體問題",
+                    "score": 0到10的整數 (該題回答的分數),
+                    "feedback": "針對應徵者該題回答的具體分析與改進建議"
+                }
+            ]
+        }
+        `;
+
+        const result = await model.generateContent(prompt);
+        const responseText = result.response.text();
+
+        console.log("✅ 報告生成完畢！");
+        res.json(JSON.parse(responseText));
+
+    } catch (error) {
+        console.error("❌ 生成報告失敗:", error);
+        res.status(500).json({ error: "AI 報告生成失敗" });
+    }
+});
 
 const MODEL_NAME = "models/gemini-3.1-flash-live-preview";
 const GEMINI_WS_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${process.env.GEMINI_API_KEY}`;
@@ -94,8 +236,8 @@ wss.on('connection', (clientWs) => {
             clientWs.send(data.toString());
 
             if (response.setupComplete) {
-                // 系統設定完畢後，發送一句隱形的話讓 AI 開口
-                geminiWs.send(JSON.stringify({ realtimeInput: { text: "你好，我準備好了，請直接針對我的履歷問我第一題。" } }));
+                // 🌟 3. 第一句話的引導詞也稍微調整得更自然
+                geminiWs.send(JSON.stringify({ realtimeInput: { text: "你好，我準備好開始面試了，請直接針對我的履歷問我第一題。" } }));
             }
 
             if (response.serverContent?.modelTurn?.parts) {
@@ -139,12 +281,13 @@ wss.on('connection', (clientWs) => {
                 // 注意：前端已經先 Insert 了 session_id，所以這裡用 Update
                 const { error: updateError } = await supabase
                     .from('interview_sessions')
-                    .update({ 
+                    .update({
                         applied_position: position,
-                        interview_type: interview_type 
+                        interview_type: interview_type,
+                        resume_id: resumeId
                     })
                     .eq('session_id', currentSessionId);
-                
+
                 if (updateError) {
                     console.error('❌ 更新職位與類型到資料庫失敗:', updateError.message);
                 } else {
@@ -205,7 +348,7 @@ wss.on('connection', (clientWs) => {
         await saveToDatabase();
         if (geminiWs) geminiWs.close();
     });
-    
+
 });
 
 server.listen(3000, () => console.log(`🚀 伺服器啟動: http://localhost:3000`));
