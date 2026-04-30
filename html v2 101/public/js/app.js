@@ -37,18 +37,7 @@ async function loadComponents() {
 window.addEventListener('DOMContentLoaded', () => {
   loadComponents();
 
-  // 預設資料初始化 (LocalStorage 備份用)
-  if (!localStorage.getItem('myResumes')) {
-    localStorage.setItem('myResumes', JSON.stringify([{
-      id: Date.now().toString(),
-      name: '範例履歷',
-      edu: '資訊管理系',
-      gender: '女',
-      lang: '英文',
-      exp: '1. 專案開發\n2. 系統分析',
-      bio: '這是一個預設範例。'
-    }]));
-  }
+  // (已經將 LocalStorage 假資料初始化的程式碼刪除)
 
   // 根據目前所在頁面執行對應邏輯
   if (document.getElementById('resume-grid-container')) renderResumes();
@@ -159,105 +148,140 @@ async function logout() {
 }
 
 // ================= 4. 履歷管理邏輯 =================
-function renderResumes() {
+// ================= 4. 履歷管理邏輯 (Supabase 雲端版) =================
+
+// 🌟 讀取並渲染履歷清單
+async function renderResumes() {
   const container = document.getElementById('resume-grid-container');
   if (!container) return;
-  const resumes = JSON.parse(localStorage.getItem('myResumes')) || [];
-  container.innerHTML = '';
   
+  // 取得當前登入使用者的 ID
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  if (!user) {
+    container.innerHTML = '<p style="text-align: center; width: 100%;">請先登入以查看履歷</p>';
+    return;
+  }
+
+  // 從資料庫撈取該使用者的履歷
+  const { data: resumes, error } = await supabaseClient
+    .from('resumes')
+    .select('*')
+    .eq('applicant_id', user.id);
+
+  if (error) return console.error("讀取履歷失敗:", error);
+
+  container.innerHTML = '';
   resumes.forEach(res => {
     container.innerHTML += `
       <div class="resume-card glass-panel" style="width:320px; height:500px; padding: 40px 30px;">
-        <h3>${res.name ? res.name + '的履歷' : '未命名履歷'}</h3>
-        <button class="btn-glass" onclick="previewResume('${res.id}')">預覽</button>
-        <button class="btn-glass" onclick="openResumeForm('${res.id}')">編輯</button>
-        <button class="btn-glass" style="color: #ff4757; border-color: rgba(255, 71, 87, 0.3);" onclick="deleteResume('${res.id}')">刪除</button>
+        <h3>${res.resume_name ? res.resume_name : '未命名履歷'}</h3>
+        <button class="btn-glass" onclick="previewResume('${res.resume_id}')">預覽</button>
+        <button class="btn-glass" onclick="openResumeForm('${res.resume_id}')">編輯</button>
+        <button class="btn-glass" style="color: #ff4757; border-color: rgba(255, 71, 87, 0.3);" onclick="deleteResume('${res.resume_id}')">刪除</button>
       </div>
     `;
   });
   container.innerHTML += `<div class="resume-card add-resume glass-panel" style="width:320px; height:500px;" onclick="openResumeForm()">⊕</div>`;
 }
 
-function openResumeForm(id = null) {
+// 🌟 打開表單 (新增或編輯)
+async function openResumeForm(id = null) {
   document.getElementById('resume-form-overlay').style.display = 'flex';
   const title = document.getElementById('resume-modal-title');
+  
   if (id) {
     title.innerText = '編輯履歷';
-    const res = (JSON.parse(localStorage.getItem('myResumes')) || []).find(r => r.id === id);
-    if (res) {
-      document.getElementById('res-id').value = res.id;
-      document.getElementById('res-name').value = res.name || '';
-      document.getElementById('res-edu').value = res.edu || '';
+    // 從雲端抓取單筆履歷資料
+    const { data: res, error } = await supabaseClient
+      .from('resumes')
+      .select('*')
+      .eq('resume_id', id)
+      .single();
+      
+    if (res && !error) {
+      document.getElementById('res-id').value = res.resume_id;
+      document.getElementById('res-name').value = res.resume_name || '';
+      document.getElementById('res-edu').value = res.education || '';
       document.getElementById('res-gender').value = res.gender || '';
-      document.getElementById('res-lang').value = res.lang || '';
-      document.getElementById('res-exp').value = res.exp || '';
-      document.getElementById('res-bio').value = res.bio || '';
+      document.getElementById('res-lang').value = res.language_skills || '';
+      document.getElementById('res-exp').value = res.work_experience || '';
+      document.getElementById('res-bio').value = res.autobiography || '';
     }
   } else {
     title.innerText = '新增履歷';
     document.getElementById('res-id').value = '';
-    // 清空表單
-    ['res-name', 'res-edu', 'res-gender', 'res-lang', 'res-exp', 'res-bio'].forEach(id => {
-      document.getElementById(id).value = '';
+    ['res-name', 'res-edu', 'res-gender', 'res-lang', 'res-exp', 'res-bio'].forEach(elId => {
+      document.getElementById(elId).value = '';
     });
   }
 }
 
-function saveResume() {
+// 🌟 儲存履歷 (寫入雲端資料庫)
+async function saveResume() {
   const id = document.getElementById('res-id').value;
   const name = document.getElementById('res-name').value.trim();
-  if (!name) return alert("姓名為必填！");
+  if (!name) return alert("履歷名稱(姓名)為必填！");
 
-  const newRes = {
-    id: id || Date.now().toString(), 
-    name: name, 
-    edu: document.getElementById('res-edu').value,
-    gender: document.getElementById('res-gender').value, 
-    lang: document.getElementById('res-lang').value,
-    exp: document.getElementById('res-exp').value, 
-    bio: document.getElementById('res-bio').value
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  if (!user) return alert("請先登入！");
+
+  // 整理要寫入的資料，欄位名稱對應你的 Supabase 表格
+  const resumeData = {
+    applicant_id: user.id,
+    resume_name: name,
+    education: document.getElementById('res-edu').value,
+    gender: document.getElementById('res-gender').value,
+    language_skills: document.getElementById('res-lang').value,
+    work_experience: document.getElementById('res-exp').value,
+    autobiography: document.getElementById('res-bio').value
   };
 
-  let resumes = JSON.parse(localStorage.getItem('myResumes')) || [];
-  if (id) { 
-    const i = resumes.findIndex(r => r.id === id); 
-    if (i > -1) resumes[i] = newRes; 
-  } else { 
-    resumes.push(newRes); 
+  if (id) {
+    // 編輯更新
+    const { error } = await supabaseClient.from('resumes').update(resumeData).eq('resume_id', id);
+    if (error) return alert("更新失敗：" + error.message);
+  } else {
+    // 全新建立
+    const { error } = await supabaseClient.from('resumes').insert([resumeData]);
+    if (error) return alert("新增失敗：" + error.message);
   }
-  localStorage.setItem('myResumes', JSON.stringify(resumes));
   
-  document.getElementById('resume-form-overlay').style.display = 'none';
+  closeResumeFormModal();
   if(document.getElementById('resume-grid-container')) renderResumes();
   if(document.getElementById('setup-resume-grid')) renderSetupResumes();
 }
 
-function deleteResume(id) {
-  if (confirm("確定要刪除這份履歷嗎？")) {
-    const resumes = (JSON.parse(localStorage.getItem('myResumes')) || []).filter(r => r.id !== id);
-    localStorage.setItem('myResumes', JSON.stringify(resumes));
+// 🌟 刪除履歷
+async function deleteResume(id) {
+  if (confirm("確定要從雲端刪除這份履歷嗎？刪除後無法恢復喔。")) {
+    const { error } = await supabaseClient.from('resumes').delete().eq('resume_id', id);
+    if (error) return alert("刪除失敗：" + error.message);
+    
     renderResumes();
+    if (document.getElementById('setup-step-2')?.classList.contains('active')) renderSetupResumes();
   }
 }
 
-function previewResume(id) {
-  const res = (JSON.parse(localStorage.getItem('myResumes')) || []).find(r => r.id === id);
-  if (!res) return;
+// 🌟 預覽履歷
+async function previewResume(id) {
+  const { data: res, error } = await supabaseClient.from('resumes').select('*').eq('resume_id', id).single();
+  if (error || !res) return alert("讀取履歷失敗");
+
   document.getElementById('preview-content').innerHTML = `
-    <div class="preview-item"><div class="preview-label">姓名 Name</div><div class="preview-value">${res.name || '-'}</div></div>
+    <div class="preview-item"><div class="preview-label">履歷名稱 Name</div><div class="preview-value">${res.resume_name || '-'}</div></div>
     <div style="display: flex; gap: 20px;">
-      <div class="preview-item" style="flex: 1;"><div class="preview-label">最高學歷 Education</div><div class="preview-value">${res.edu || '-'}</div></div>
+      <div class="preview-item" style="flex: 1;"><div class="preview-label">最高學歷 Education</div><div class="preview-value">${res.education || '-'}</div></div>
       <div class="preview-item" style="flex: 1;"><div class="preview-label">性別 Gender</div><div class="preview-value">${res.gender || '-'}</div></div>
     </div>
-    <div class="preview-item"><div class="preview-label">語言能力 Languages</div><div class="preview-value">${res.lang || '-'}</div></div>
-    <div class="preview-item"><div class="preview-label">經歷 Experience</div><div class="preview-value">${res.exp || '-'}</div></div>
-    <div class="preview-item" style="border: none;"><div class="preview-label">自傳 Autobiography</div><div class="preview-value">${res.bio || '-'}</div></div>
+    <div class="preview-item"><div class="preview-label">語言能力 Languages</div><div class="preview-value">${res.language_skills || '-'}</div></div>
+    <div class="preview-item"><div class="preview-label">工作與專案經歷 Experience</div><div class="preview-value">${res.work_experience || '-'}</div></div>
+    <div class="preview-item" style="border: none;"><div class="preview-label">自傳 Autobiography</div><div class="preview-value">${res.autobiography || '-'}</div></div>
   `;
   document.getElementById('resume-preview-overlay').style.display = 'flex';
 }
+
 function closePreviewModal() { document.getElementById('resume-preview-overlay').style.display = 'none'; }
 function closeResumeFormModal() { document.getElementById('resume-form-overlay').style.display = 'none'; }
-
 // ================= 5. 面試設定流程 =================
 let interviewState = { type: '', position: '', resumeId: null };
 
@@ -278,28 +302,37 @@ function goToSetupStep1() {
   document.getElementById('setup-step-1').classList.add('active');
 }
 
-function renderSetupResumes() {
+async function renderSetupResumes() {
   const container = document.getElementById('setup-resume-grid');
   if(!container) return;
-  const resumes = JSON.parse(localStorage.getItem('myResumes')) || [];
+  
+  const { data: { user } } = await supabaseClient.auth.getUser();
+  if (!user) return;
+
+  const { data: resumes, error } = await supabaseClient
+    .from('resumes')
+    .select('*')
+    .eq('applicant_id', user.id);
+
   container.innerHTML = '';
   
-  if (resumes.length === 0) {
-    container.innerHTML = `<p style="text-align: center; width: 100%;">尚未建立履歷。</p>`;
-  }
-
-  resumes.forEach(res => {
-    const isSelected = interviewState.resumeId === res.id ? 'selected' : '';
-    container.innerHTML += `
-      <div class="resume-card glass-panel selectable-resume ${isSelected}" onclick="selectResumeForInterview('${res.id}')" style="width:280px; height:380px;">
-        <h3>${res.name}</h3>
-        <p>學歷: ${res.edu || '-'}</p>
-        <div style="color: var(--primary-green); font-weight: bold; margin-top: 10px;">
-          ${isSelected ? '✔️ 已選擇' : '點擊選擇'}
+  if (!resumes || resumes.length === 0) {
+    container.innerHTML = `<p style="text-align: center; width: 100%;">您尚未建立任何履歷，請先新增一份履歷。</p>`;
+  } else {
+    resumes.forEach(res => {
+      // 這裡對應的變數要改成 res.resume_id 和 res.resume_name
+      const isSelected = interviewState.resumeId === res.resume_id ? 'selected' : '';
+      container.innerHTML += `
+        <div class="resume-card glass-panel selectable-resume ${isSelected}" onclick="selectResumeForInterview('${res.resume_id}')" style="width:280px; height:380px;">
+          <h3>${res.resume_name}</h3>
+          <p>學歷: ${res.education || '-'}</p>
+          <div style="color: var(--primary-green); font-weight: bold; margin-top: 10px;">
+            ${isSelected ? '✔️ 已選擇' : '點擊選擇此履歷'}
+          </div>
         </div>
-      </div>
-    `;
-  });
+      `;
+    });
+  }
   container.innerHTML += `<div class="resume-card add-resume glass-panel" style="width:280px; height:380px;" onclick="openResumeForm()">⊕</div>`;
 }
 
