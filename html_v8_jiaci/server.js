@@ -17,22 +17,13 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static('public'));
 // =====================================================================
-// 🌟 面試結果報告生成 API 區塊 (對接 result.html)
+// 🌟 面試結果報告生成 API 區塊 (對接 result.html) — 僅使用 OpenAI GPT
 // =====================================================================
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const OpenAI = require('openai/index.js');
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY_REPORT);
+const OpenAI = require('openai');
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
-const REPORT_PROVIDER_PRIMARY = (process.env.REPORT_PROVIDER_PRIMARY || 'gemini').toLowerCase();
-const REPORT_PROVIDER_FALLBACK = (process.env.REPORT_PROVIDER_FALLBACK || 'gpt').toLowerCase();
-const GEMINI_REPORT_MODEL = process.env.GEMINI_REPORT_MODEL || 'gemini-2.5-flash';
 const OPENAI_REPORT_MODEL = process.env.OPENAI_REPORT_MODEL || 'gpt-4o-mini';
 
 app.use(express.json()); // 確保 Express 能解析 POST body 中的 JSON
-
-function shouldFallbackByStatus(err) {
-    return !!(err && (err.status === 401 || err.status === 429 || err.status === 503));
-}
 
 function buildReportPrompt(transcript) {
     return `
@@ -72,24 +63,6 @@ function parseJsonSafely(text) {
         const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/, '').trim();
         return JSON.parse(cleaned);
     }
-}
-
-async function generateReportByGemini(prompt) {
-    if (!process.env.GEMINI_API_KEY_REPORT) {
-        const err = new Error('缺少 GEMINI_API_KEY_REPORT');
-        err.status = 401;
-        throw err;
-    }
-
-    const model = genAI.getGenerativeModel({
-        model: GEMINI_REPORT_MODEL,
-        generationConfig: {
-            responseMimeType: "application/json",
-        }
-    });
-
-    const result = await model.generateContent(prompt);
-    return parseJsonSafely(result.response.text());
 }
 
 async function generateReportByGpt(prompt) {
@@ -190,7 +163,7 @@ app.get('/api/resume', async (req, res) => {
         res.status(500).json({ error: "履歷讀取失敗" });
     }
 });
-// 3. 呼叫 Gemini 產生結構化面試報告 (強制輸出 JSON)
+// 3. 呼叫 OpenAI GPT 產生結構化面試報告 (JSON)
 app.post('/api/generate-report', async (req, res) => {
     const { transcript } = req.body;
 
@@ -199,49 +172,24 @@ app.post('/api/generate-report', async (req, res) => {
     }
 
     try {
-        console.log("🧠 正在生成 AI 面試報告...");
+        console.log(`🧠 正在以 GPT (${OPENAI_REPORT_MODEL}) 生成面試報告...`);
         const prompt = buildReportPrompt(transcript);
-        const providers = [REPORT_PROVIDER_PRIMARY];
-        if (REPORT_PROVIDER_FALLBACK && REPORT_PROVIDER_FALLBACK !== REPORT_PROVIDER_PRIMARY) {
-            providers.push(REPORT_PROVIDER_FALLBACK);
-        }
-
-        let lastError = null;
-        for (let i = 0; i < providers.length; i++) {
-            const provider = providers[i];
-            const isLastProvider = i === providers.length - 1;
-            try {
-                const report = provider === 'gpt'
-                    ? await generateReportByGpt(prompt)
-                    : await generateReportByGemini(prompt);
-                console.log(`✅ 報告生成完畢 (provider: ${provider})`);
-                return res.json(report);
-            } catch (err) {
-                lastError = err;
-                if (!isLastProvider && shouldFallbackByStatus(err)) {
-                    console.warn(`⚠️ ${provider} 產生報告失敗 (${err.status || 'no-status'})，嘗試 fallback...`);
-                    continue;
-                }
-                throw err;
-            }
-        }
-
-        throw lastError || new Error('AI 報告生成失敗');
-
+        const report = await generateReportByGpt(prompt);
+        console.log("✅ 報告生成完畢 (OpenAI GPT)");
+        return res.json(report);
     } catch (error) {
         console.error("❌ 生成報告失敗:", error);
-        if (error && error.status === 429) {
+        const status = error?.status;
+        if (status === 429) {
             return res.status(429).json({
-                error: "AI 配額不足或已超過限制，請檢查 Gemini / GPT 的 API Key 與配額設定。"
+                error: "OpenAI 配額不足或請求過於頻繁，請檢查帳單與用量上限。"
             });
         }
-
-        if (error && error.status === 401) {
+        if (status === 401) {
             return res.status(401).json({
-                error: "AI API Key 無效或缺失，請檢查 .env 的 GEMINI_API_KEY_REPORT 與 OPENAI_API_KEY。"
+                error: "OpenAI API Key 無效或缺失，請檢查 .env 的 OPENAI_API_KEY。"
             });
         }
-
         res.status(500).json({ error: "AI 報告生成失敗，請檢查伺服器日誌。" });
     }
 });
