@@ -17,11 +17,14 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static('public'));
 // =====================================================================
-// 🌟 面試結果報告生成 API 區塊 (對接 result.html) — 僅使用 OpenAI GPT
+// 🌟 面試結果報告生成 API 區塊 (對接 result.html) — 使用 Gemini 2.5‑flash
 // =====================================================================
-const OpenAI = require('openai');
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
-const OPENAI_REPORT_MODEL = process.env.OPENAI_REPORT_MODEL || 'gpt-4o-mini';
+const GEMINI_TEXT_API_KEY =
+    process.env.GEMINI_API_KEY_REPORT ||
+    process.env.GEMINI_API_KEY ||
+    process.env.GEMINI_TEXT_API_KEY ||
+    '';
+const GEMINI_REPORT_MODEL = process.env.GEMINI_REPORT_MODEL || 'models/gemini-2.5-flash';
 
 app.use(express.json()); // 確保 Express 能解析 POST body 中的 JSON
 
@@ -65,24 +68,52 @@ function parseJsonSafely(text) {
     }
 }
 
-async function generateReportByGpt(prompt) {
-    if (!openai) {
-        const err = new Error('缺少 OPENAI_API_KEY');
+async function generateReportByGemini(prompt) {
+    if (!GEMINI_TEXT_API_KEY) {
+        const err = new Error('缺少 GEMINI_API_KEY');
         err.status = 401;
         throw err;
     }
 
-    const completion = await openai.chat.completions.create({
-        model: OPENAI_REPORT_MODEL,
-        messages: [
-            { role: "system", content: "你是專業 HR 面試分析助理，請只輸出合法 JSON，不要任何多餘文字。" },
-            { role: "user", content: prompt }
+    const url = `https://generativelanguage.googleapis.com/v1beta/${GEMINI_REPORT_MODEL}:generateContent?key=${GEMINI_TEXT_API_KEY}`;
+
+    const body = {
+        contents: [
+            {
+                role: "user",
+                parts: [{ text: prompt }]
+            }
         ],
-        temperature: 0.4,
-        response_format: { type: "json_object" }
+        systemInstruction: {
+            role: "system",
+            parts: [
+                {
+                    text: "你是專業 HR 面試分析助理，請只輸出合法 JSON，不要任何多餘文字。"
+                }
+            ]
+        },
+        generationConfig: {
+            temperature: 0.4
+        }
+    };
+
+    const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
     });
 
-    const text = completion.choices?.[0]?.message?.content || '';
+    if (!resp.ok) {
+        const text = await resp.text().catch(() => '');
+        const err = new Error(`Gemini API 錯誤: ${resp.status} ${resp.statusText} ${text}`);
+        err.status = resp.status;
+        throw err;
+    }
+
+    const data = await resp.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
     return parseJsonSafely(text);
 }
 
@@ -163,7 +194,7 @@ app.get('/api/resume', async (req, res) => {
         res.status(500).json({ error: "履歷讀取失敗" });
     }
 });
-// 3. 呼叫 OpenAI GPT 產生結構化面試報告 (JSON)
+// 3. 呼叫 Gemini 2.5‑flash 產生結構化面試報告 (JSON)
 app.post('/api/generate-report', async (req, res) => {
     const { transcript } = req.body;
 
@@ -172,22 +203,22 @@ app.post('/api/generate-report', async (req, res) => {
     }
 
     try {
-        console.log(`🧠 正在以 GPT (${OPENAI_REPORT_MODEL}) 生成面試報告...`);
+        console.log(`🧠 正在以 Gemini 報告模型 (${GEMINI_REPORT_MODEL}) 生成面試報告...`);
         const prompt = buildReportPrompt(transcript);
-        const report = await generateReportByGpt(prompt);
-        console.log("✅ 報告生成完畢 (OpenAI GPT)");
+        const report = await generateReportByGemini(prompt);
+        console.log("✅ 報告生成完畢 (Gemini)");
         return res.json(report);
     } catch (error) {
         console.error("❌ 生成報告失敗:", error);
         const status = error?.status;
         if (status === 429) {
             return res.status(429).json({
-                error: "OpenAI 配額不足或請求過於頻繁，請檢查帳單與用量上限。"
+                error: "Gemini 配額不足或請求過於頻繁，請檢查帳單與用量上限。"
             });
         }
         if (status === 401) {
             return res.status(401).json({
-                error: "OpenAI API Key 無效或缺失，請檢查 .env 的 OPENAI_API_KEY。"
+                error: "Gemini API Key 無效或缺失，請檢查 .env 的 GEMINI_API_KEY。"
             });
         }
         res.status(500).json({ error: "AI 報告生成失敗，請檢查伺服器日誌。" });
