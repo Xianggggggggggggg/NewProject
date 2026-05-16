@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>公司資訊 - CareerLab</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/0company.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div id="topbar-container"></div>
+  <div id="sidebar-container"></div>
+
+  <div class="section-container active">
+    <h2 style="color: var(--primary-green); margin-bottom: 30px;">🏢 公司資訊設定</h2>
+    
+    <div class="glass-panel" style="width: 95%; padding: 40px; text-align: left;">
+      <div style="margin-bottom: 25px;">
+        <label style="display: block; margin-bottom: 10px; font-weight: bold; color: var(--text-main);">公司名稱</label>
+        <input type="text" id="profile-name" class="reg-input" placeholder="請輸入公司全名">
+      </div>
+
+      <div style="margin-bottom: 25px;">
+        <label style="display: block; margin-bottom: 10px; font-weight: bold; color: var(--text-main);">產業類別</label>
+        <input type="text" id="profile-industry" class="reg-input" placeholder="例如：軟體科技業">
+      </div>
+
+      <div style="margin-bottom: 25px;">
+        <label style="display: block; margin-bottom: 10px; font-weight: bold; color: var(--text-main);">企業聯絡信箱</label>
+        <input type="email" id="profile-email" class="reg-input" placeholder="hr@company.com">
+      </div>
+
+      <div style="margin-bottom: 30px;">
+        <label style="display: block; margin-bottom: 10px; font-weight: bold; color: var(--text-main);">公司簡介</label>
+        <textarea id="profile-info" class="reg-input" style="min-height: 200px;" placeholder="請輸入公司詳細簡介，這將有助於求職者了解企業文化"></textarea>
+      </div>
+
+      <button class="btn-green" style="width: 100%; padding: 15px; font-size: 18px;" onclick="saveCompanyProfile()">儲存所有修改</button>
+    </div>
+  </div>
+
+  <script src="../js/0company.js" defer></script>
+</body>
+</html>
