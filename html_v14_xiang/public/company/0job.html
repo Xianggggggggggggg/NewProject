@@ -15,13 +15,30 @@
     <h2 style="color: var(--primary-green); margin-bottom: 20px;">💼 職缺管理</h2>
     
     <div class="job-list-wrapper glass-panel" id="job-list-container">
+      
       <div class="job-row header-row">
         <div class="col-dept">所屬部門</div>
         <div class="col-title">職缺名稱</div>
         <div class="col-count">應徵人數</div>
         <div class="col-action">操作</div>
       </div>
+      
+      <div id="job-list-body"></div>
     </div>
+
+    <template id="job-template">
+      <div class="job-row item-row">
+        <div class="col-dept js-dept"></div>
+        <div class="col-title js-title"></div>
+        <div class="col-count">
+          <span class="count-badge js-count">0</span>
+        </div>
+        <div class="col-action">
+          <button class="icon-btn js-edit-btn">✏️</button>
+          <button class="icon-btn js-delete-btn">🗑️</button>
+        </div>
+      </div>
+    </template>
 
     <button class="floating-add-btn" onclick="openJobModal()">＋ 新增職缺</button>
   </div>

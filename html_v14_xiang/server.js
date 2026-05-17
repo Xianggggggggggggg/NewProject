@@ -14,6 +14,8 @@ app.use(express.json());
 // 這樣設定後，前端呼叫就會自動加上 /api，例如 /api/transcript
 const apiRoutes = require('./routes/api');
 app.use('/api', apiRoutes);
+const companyApiRoutes = require('./routes/company_api');
+app.use('/api/company', companyApiRoutes);
 
 // 3. 啟動 WebSocket 服務 (AI 面試連線)
 const setupWebSocket = require('./services/websocket');
