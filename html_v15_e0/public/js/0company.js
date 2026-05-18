@@ -1,6 +1,17 @@
 // 📁 檔案位置：public/js/0company.js
 // 🌟 100% 抽離 CSS 與 HTML 模板，純粹處理資料流與前端互動邏輯
 
+// 💰 薪水自動格式化神器 (企業端用)
+function formatSalaryText(text) {
+  if (!text) return '面議';
+  if (text.includes('面議')) return text;
+  let cleanText = text.replace(/\$/g, '').replace(/,/g, '');
+  cleanText = cleanText.replace(/\s*[-~]\s*/g, ' - ');
+  return cleanText.replace(/\d+/g, (match) => {
+    return '$' + parseInt(match, 10).toLocaleString('en-US');
+  });
+}
+
 // ================= 1. 載入組件與導覽邏輯 =================
 async function loadCompanyComponents() {
   const sidebarContainer = document.getElementById('sidebar-container');
@@ -131,6 +142,24 @@ async function fetchJobs() {
 }
 
 // 🌟 儲存新職缺
+// 💰 薪水自動格式化工具（自動加上 $ 符號與千分位逗號）
+function formatSalaryText(text) {
+  if (!text) return '面議';
+  if (text.includes('面議')) return text; // 如果原本就輸入面議，保持原樣
+
+  // 1. 先清除使用者不小心重複輸入的 $ 或 , 符號，還原成純數字
+  let cleanText = text.replace(/\$/g, '').replace(/,/g, '');
+  
+  // 2. 讓中間的減號或波浪號前後自動加上空格，確保排版美觀
+  cleanText = cleanText.replace(/\s*[-~]\s*/g, ' - ');
+  
+  // 3. 找出裡面的所有數字，自動轉換成 $XX,XXX 的格式
+  return cleanText.replace(/\d+/g, (match) => {
+    return '$' + parseInt(match, 10).toLocaleString('en-US');
+  });
+}
+
+// 🌟 完整的職缺儲存邏輯
 async function saveJob() {
   const jobId = document.getElementById('job-id').value; // 抓取隱藏的 ID
   
@@ -138,7 +167,10 @@ async function saveJob() {
     department: document.getElementById('job-dept').value,
     job_title: document.getElementById('job-title').value,
     headcount: parseInt(document.getElementById('job-count').value) || 1,
-    salary: document.getElementById('job-salary').value,
+    
+    // 🎯 關鍵修改點：在存進資料庫前，先把薪水欄位丟進格式化工具處理
+    salary: formatSalaryText(document.getElementById('job-salary').value),
+    
     job_description: document.getElementById('job-desc').value,
     requirements: document.getElementById('job-req').value,
     work_schedule: document.getElementById('job-time').value,

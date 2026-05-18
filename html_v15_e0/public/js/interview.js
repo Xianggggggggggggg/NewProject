@@ -707,18 +707,30 @@ async function handleEndInterview() {
             // 🌟 【你要的新增區塊】：在這裡發送唯一一筆 Emotion Log (面試總結)
             // =====================================================================
             console.log("⏳ 正在寫入唯一一筆 emotion_log 面試總結...");
+            
             try {
+                // 🧠 1. 判斷整場面試的「主要情緒」
+                const ed = window.interviewSessionData;
+                let finalEmotion = "平穩"; // 預設值
+                
+                if (ed.happy_frames > ed.neutral_frames && ed.happy_frames > ed.sad_frames) {
+                    finalEmotion = "自信/喜悅";
+                } else if (ed.sad_frames > ed.neutral_frames && ed.sad_frames > ed.happy_frames) {
+                    finalEmotion = "緊張/焦慮";
+                }
+
+                // 🚀 2. 把算出來的真實情緒送給後端
                 await fetch('/api/log-emotion', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         session_id: sessionId,
-                        timestamp_mark: "面試總結", // 👈 助教要看的唯一一筆標記就在這
-                        emotion: "平穩",           
-                        focus_score: Math.round(window.interviewSessionData.confidence_score || 0)
+                        timestamp_mark: "面試總結", 
+                        emotion: finalEmotion,      // 👈 這裡不再是寫死的，而是動態計算的真實結果！
+                        focus_score: Math.round(ed.confidence_score || 0)
                     })
                 });
-                console.log("✅ 唯一一筆 emotion_log 寫入成功！");
+                console.log(`✅ 唯一一筆 emotion_log 寫入成功！主要情緒判定為：${finalEmotion}`);
             } catch (logErr) {
                 console.error("⚠️ emotion_log 寫入失敗，但繼續生成報告:", logErr);
             }

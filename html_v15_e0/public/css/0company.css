@@ -156,11 +156,16 @@
     input:checked + .slider { background-color: var(--primary-green); border-color: var(--primary-green); }
     input:checked + .slider:before { transform: translateX(24px); }
 
-    /* ================= 4.職缺管理 (0job.html) 專屬版面 ================= */
+    
+/* ================= 4.職缺管理 (0job.html) 專屬版面 ================= */
 .job-list-wrapper {
   width: 100%;
   border-radius: 16px;
-  overflow: hidden;
+  /* 🌟 1. 拿掉 hidden，改成最大高度與自動捲軸 */
+  max-height: 60vh; 
+  overflow-y: auto; 
+  /* 加個淡淡的外邊框讓邊界更清楚 */
+  border: 1px solid rgba(0,0,0,0.05);
 }
 
 .job-row {
@@ -174,7 +179,14 @@
 }
 
 .header-row {
-  background: rgba(121, 152, 81, 0.1);
+  /* 🌟 2. 施展黏性魔法，讓標題永遠固定在最上方！ */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  /* 🌟 3. 給標題列不透明的背景，往下滑的時候字才不會打架 */
+  background: rgba(245, 248, 244, 0.95); 
+  backdrop-filter: blur(5px);
+  border-bottom: 2px solid rgba(121, 152, 81, 0.2);
   font-weight: bold;
   color: var(--primary-green);
 }

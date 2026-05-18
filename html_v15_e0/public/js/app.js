@@ -749,48 +749,103 @@ const mockJobsDB = {
   'job_003': { id: 'job_003', dept: '設計部', title: 'UI/UX 設計師', salary: '月薪 40,000 - 55,000', desc: '1. 規劃系統介面\n2. 繪製 Wireframe 與 Prototype', req: '精通 Figma\n具備設計系統概念', time: '09:30 - 18:30', other: '配備頂級人體工學椅' }
 };
 
-// 渲染大廳列表
-function renderLobbyJobs() {
+// 🌟 1. 渲染大廳列表 (純 JS 控制，無 HTML 字串)
+async function renderLobbyJobs() {
   const grid = document.getElementById('job-grid-container');
-  if (!grid) return;
-  grid.innerHTML = '';
-  Object.values(mockJobsDB).forEach(job => {
-    grid.innerHTML += `
-      <div class="job-card glass-panel" onclick="window.location.href='apply.html?jobId=${job.id}'" style="padding: 25px; cursor: pointer; transition: 0.3s; position: relative;">
-        <div style="position: absolute; top: 20px; right: 20px; font-size: 24px; color: #ccc;">🔖</div>
-        <div style="font-size: 14px; color: var(--text-sub); margin-bottom: 5px;">${job.dept}</div>
-        <div style="font-size: 22px; font-weight: bold; color: var(--text-main); margin-bottom: 15px;">${job.title}</div>
-        <div style="font-size: 16px; color: #d9534f; font-weight: bold;">${job.salary}</div>
-      </div>
-    `;
-  });
+  const template = document.getElementById('job-card-template'); 
+  
+  if (!grid || !template) return;
+  
+  grid.innerHTML = ''; 
+
+  try {
+    const response = await apiGet('/api/company/jobs');
+    
+    if (response.success) {
+      const activeJobs = response.data.filter(job => job.status !== '關閉');
+
+      if (activeJobs.length === 0) {
+        grid.textContent = '目前尚無開放中的職缺喔！';
+        grid.style.textAlign = 'center';
+        grid.style.width = '100%';
+        grid.style.color = 'var(--text-sub)';
+        return;
+      }
+
+      activeJobs.forEach(job => {
+        const clone = template.content.cloneNode(true);
+        const card = clone.querySelector('.js-card');
+        
+        clone.querySelector('.js-dept').textContent = job.department || '未指定';
+        clone.querySelector('.js-title').textContent = job.job_title || '未指定';
+        
+        // 🎯 自動加 $ 符號的聰明邏輯
+        let salaryText = job.salary ? job.salary.trim() : '';
+        // 防呆：如果企業已經自己打了 $，或打了「面議/月薪」，就不重複加
+        if (salaryText && !salaryText.includes('$') && !salaryText.includes('面議') && !salaryText.includes('月薪')) {
+          salaryText = '$' + salaryText;
+        }
+        // 替換這行 👇
+        clone.querySelector('.js-salary').textContent = formatSalaryText(job.salary);
+        
+        card.addEventListener('click', () => {
+          window.location.href = `apply.html?jobId=${job.job_id}`;
+        });
+
+        grid.appendChild(clone);
+      });
+    }
+  } catch (err) {
+    console.error('載入職缺失敗:', err);
+    grid.textContent = '無法載入職缺，請檢查伺服器連線。';
+    grid.style.color = 'red';
+  }
 }
 
-// 渲染詳細頁資料
-function renderJobDetail() {
+// 🌟 2. 渲染詳細頁資料 (apply.html 專用)
+async function renderJobDetail() {
   const container = document.getElementById('job-detail-container');
   if (!container) return;
 
   const urlParams = new URLSearchParams(window.location.search);
   const jobId = urlParams.get('jobId');
-  const job = mockJobsDB[jobId];
 
-  if (job) {
-    document.getElementById('job-dept').innerText = job.dept;
-    document.getElementById('job-title').innerText = job.title;
-    document.getElementById('job-salary').innerText = job.salary;
-    document.getElementById('job-desc').innerText = job.desc;
-    document.getElementById('job-req').innerText = job.req;
-    document.getElementById('job-time').innerText = job.time;
-    document.getElementById('job-other').innerText = job.other;
-  } else {
-    alert("找不到此職缺！");
-    window.location.href = 'lobby.html';
+  try {
+    const response = await apiGet('/api/company/jobs');
+    
+    if (response.success) {
+      const job = response.data.find(j => j.job_id === jobId);
+
+      if (job) {
+        document.getElementById('job-dept').textContent = job.department || '未指定';
+        document.getElementById('job-title').textContent = job.job_title || '未指定';
+        
+        // 🎯 自動加 $ 符號的聰明邏輯 (同步處理)
+        let salaryText = job.salary ? job.salary.trim() : '';
+        if (salaryText && !salaryText.includes('$') && !salaryText.includes('面議') && !salaryText.includes('月薪')) {
+          salaryText = '$' + salaryText;
+        }
+        // 替換這行 👇
+        document.getElementById('job-salary').textContent = formatSalaryText(job.salary);
+        
+        document.getElementById('job-desc').textContent = job.job_description || '無詳細說明';
+        document.getElementById('job-req').textContent = job.requirements || '無特別要求';
+        document.getElementById('job-time').textContent = job.work_schedule || '依公司規定';
+        document.getElementById('job-other').textContent = job.benefits || '無';
+      } else {
+        alert("找不到此職缺！可能已被企業關閉或刪除。");
+        window.location.href = 'lobby.html'; 
+      }
+    }
+  } catch (err) {
+    console.error('載入詳細資料失敗:', err);
+    alert("伺服器連線異常，請稍後再試！");
   }
 }
 
 // 處理應徵動作
-function handleApplyAction() {
+// 🌟 3. 處理點擊「應徵」按鈕的動作
+async function handleApplyAction() {
   const token = localStorage.getItem('supabase_access_token');
   const urlParams = new URLSearchParams(window.location.search);
   const jobId = urlParams.get('jobId');
@@ -798,13 +853,39 @@ function handleApplyAction() {
   if (!token) {
     alert("💡 必須登入求職者帳號才能應徵喔！將為您導向登入頁面。");
     localStorage.setItem('pendingApplyJobId', jobId); // 記住他想應徵的職缺
-    window.location.href = 'index.html'; // 把他踢回登入頁（假設 index.html 是登入頁）
+    window.location.href = 'index.html'; // 踢回登入頁
   } else {
-    // 已經登入了，直接幫他把職位名稱傳給 setup.html
-    const job = mockJobsDB[jobId];
-    if(job) localStorage.setItem('prefillPosition', job.title); 
+    try {
+      // 登入狀態下，去資料庫查一下這個職缺的名稱，準備帶入面試設定頁
+      const response = await apiGet('/api/company/jobs');
+      if (response.success) {
+        const job = response.data.find(j => j.job_id === jobId);
+        if (job) {
+          localStorage.setItem('prefillPosition', job.job_title); 
+        }
+      }
+    } catch (err) {
+      console.error('記錄職位名稱失敗:', err);
+    }
     
     alert("🎉 您已登入！即將跳轉到面試設定流程...");
-    window.location.href = 'setup.html'; // 跳轉到挑選履歷與設定面試的頁面
+    window.location.href = 'setup.html'; 
   }
 }
+
+function formatSalaryText(text) {
+  if (!text) return '面議';
+  if (text.includes('面議')) return text; // 如果有打面議，就保持原樣
+  
+  // 1. 先把可能已經存在的 $ 和 , 清掉，還原成純淨的狀態
+  let cleanText = text.replace(/\$/g, '').replace(/,/g, '');
+  
+  // 2. 讓中間的減號或波浪號前後自動加上空格，排版更美 (變成 " - ")
+  cleanText = cleanText.replace(/\s*[-~]\s*/g, ' - ');
+  
+  // 3. 找出裡面「所有的連續數字」，幫它們自動戴上 $ 和千位數逗號
+  return cleanText.replace(/\d+/g, (match) => {
+    return '$' + parseInt(match, 10).toLocaleString('en-US');
+  });
+}
+
