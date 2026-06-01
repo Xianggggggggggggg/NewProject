@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>企業登入 - CareerLab</title>
+  <link rel="stylesheet" href="../css/0company.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body id="login-page">
+  <div class="section-container active" style="justify-content: center; align-items: center; display: flex; height: 100vh;">
+    <div class="logo-text">CareerLab 企業端</div>
+    <div class="auth-box glass-panel">
+      <h2 style="text-align: center; margin: 0 0 10px 0;">企業招募管理</h2>
+      <input type="text" id="username" placeholder="企業帳號">
+      <div style="position: relative; width: 100%;">
+        <input type="password" id="password" placeholder="密碼" style="width: 100%; padding-right: 50px; box-sizing: border-box;">
+        <button type="button" id="toggle-pwd-btn" onclick="togglePasswordVisibility()" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 14px; color: var(--text-sub);">顯示</button>
+      </div>
+      <button class="btn-green" onclick="handleCompanyLogin()">企業登入</button>
+      <button class="btn-glass" onclick="forgotPassword()">忘記密碼</button>
+    </div>
+  </div>
+  <script src="../js/0company.js" defer></script>
+</body>
+</html>
