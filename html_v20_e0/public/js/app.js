@@ -533,15 +533,23 @@ async function beginInterview() {
   const resumeId = interviewState.resumeId;
   if (!resumeId) return alert('請選擇一份要投遞的履歷！');
 
+  // 🚀 關鍵修復：拿出剛剛存的 job_id
+  const targetJobId = localStorage.getItem('prefillJobId') || null;
+
   try {
     const result = await apiPost('/api/interview-sessions', {
       resume_id: resumeId,
       position: positionValue,
-      type: typeValue
+      type: typeValue,
+      job_id: targetJobId // 👈 送出 job_id 給後端
     });
 
     if (result.error) throw new Error(result.error);
     const sessionId = result.session_id;
+
+    // 清除暫存，保持乾淨
+    localStorage.removeItem('prefillPosition');
+    localStorage.removeItem('prefillJobId');
 
     window.location.href = `interview.html?session_id=${sessionId}&resume_id=${resumeId}&position=${encodeURIComponent(positionValue)}&type=${encodeURIComponent(typeValue)}`;
   } catch (err) {
@@ -880,6 +888,8 @@ async function handleApplyAction() {
         const job = response.data.find(j => j.job_id === jobId);
         if (job) {
           localStorage.setItem('prefillPosition', job.job_title); 
+          // 🚀 關鍵修復：把真實的 job_id 也存起來！
+          localStorage.setItem('prefillJobId', job.job_id); 
         }
       }
     } catch (err) {

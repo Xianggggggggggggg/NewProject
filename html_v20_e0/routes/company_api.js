@@ -4,8 +4,7 @@ const express = require('express');
 const router = express.Router();
 const { createClient } = require('@supabase/supabase-js');
 
-// 🌟 核心修復：為企業端建立「絕對隔離」的上帝模式客戶端！
-// 加入 auth 設定，強制它永遠不記住登入狀態，確保不受求職者登入的影響
+// 🌟 建立企業端上帝模式客戶端
 const supabaseAdmin = createClient(
     process.env.SUPABASE_URL,
     process.env.SUPABASE_SERVICE_KEY,
@@ -14,7 +13,6 @@ const supabaseAdmin = createClient(
     }
 );
 
-// 1. [新增職缺]
 router.post('/jobs', async (req, res) => {
     try {
         const { error } = await supabaseAdmin.from('jobs').insert([req.body]);
@@ -25,7 +23,6 @@ router.post('/jobs', async (req, res) => {
     }
 });
 
-// 2. [讀取職缺列表]
 router.get('/jobs', async (req, res) => {
     try {
         const { data, error } = await supabaseAdmin.from('jobs').select('*').order('created_at', { ascending: false });
@@ -36,18 +33,26 @@ router.get('/jobs', async (req, res) => {
     }
 });
 
-// 3. [讀取公司資訊] (固定讀取 id=1)
-router.get('/profile', async (req, res) => {
+router.delete('/jobs/:id', async (req, res) => {
     try {
-        const { data, error } = await supabaseAdmin.from('company_profile').select('*').eq('id', 1).single();
+        const { error } = await supabaseAdmin.from('jobs').delete().eq('job_id', req.params.id); 
         if (error) throw error;
-        res.json({ success: true, data });
+        res.json({ success: true, message: "職缺已成功刪除！" });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// 4. [更新公司資訊]
+router.put('/jobs/:id', async (req, res) => {
+    try {
+        const { error } = await supabaseAdmin.from('jobs').update(req.body).eq('job_id', req.params.id);
+        if (error) throw error;
+        res.json({ success: true, message: "職缺已成功更新！" });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 router.put('/profile', async (req, res) => {
     try {
         const { error } = await supabaseAdmin.from('company_profile').update(req.body).eq('id', 1);
@@ -58,38 +63,57 @@ router.put('/profile', async (req, res) => {
     }
 });
 
-// 5. [刪除職缺] API
-router.delete('/jobs/:id', async (req, res) => {
-    const jobId = req.params.id; 
+// ==========================================
+// 🚀 求職者管理專用 API
+// ==========================================
+
+router.get('/applicants', async (req, res) => {
     try {
-        const { error } = await supabaseAdmin
-            .from('jobs')
-            .delete()
-            .eq('job_id', jobId); 
+        const { data, error } = await supabaseAdmin
+            .from('interview_sessions')
+            .select(`
+                session_id,
+                status,
+                start_time,
+                applicants ( name, email ),
+                jobs ( department, job_title ),
+                evaluation_reports ( report_id )
+            `)
+            .order('start_time', { ascending: false });
 
         if (error) throw error;
-        res.json({ success: true, message: "✅ 職缺已成功刪除！" });
+
+        // 🌟 關鍵修復：先過濾 (filter) 掉沒有職缺、沒有部門的髒資料，再進行 map 整理
+        const formattedData = data
+            .filter(session => session.jobs && session.jobs.department) 
+            .map(session => ({
+                session_id: session.session_id,
+                department: session.jobs.department,
+                name: session.applicants?.name || '未知應徵者',
+                job_title: session.jobs.job_title,
+                status: session.status || 'status-2', 
+                hasReport: !!session.evaluation_reports
+            }));
+
+        res.json({ success: true, data: formattedData });
     } catch (err) {
-        console.error('❌ 刪除職缺失敗:', err.message);
         res.status(500).json({ success: false, error: err.message });
     }
 });
 
-// 6. [更新職缺] API
-router.put('/jobs/:id', async (req, res) => {
-    const jobId = req.params.id; 
-    const updatedData = req.body; 
-    
+router.put('/applicants/:session_id/status', async (req, res) => {
     try {
+        const { status } = req.body;
+        if (!status) return res.status(400).json({ success: false, error: '缺少狀態參數' });
+
         const { error } = await supabaseAdmin
-            .from('jobs')
-            .update(updatedData)
-            .eq('job_id', jobId); 
+            .from('interview_sessions')
+            .update({ status })
+            .eq('session_id', req.params.session_id);
 
         if (error) throw error;
-        res.json({ success: true, message: "✅ 職缺已成功更新！" });
+        res.json({ success: true });
     } catch (err) {
-        console.error('❌ 更新職缺失敗:', err.message);
         res.status(500).json({ success: false, error: err.message });
     }
 });

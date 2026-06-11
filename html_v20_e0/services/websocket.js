@@ -42,6 +42,22 @@ function setupWebSocket(server) {
         const hrtargetCount = 2;
         const managertargetCount = 2;
 
+        // 給 HR 用的交接工具
+        const hrTools = [{
+            functionDeclarations: [{
+                name: "handover_to_manager",
+                description: "當你完成人資的面試開場與行為提問，準備將面試交接給部門主管進行技術面試時，必須呼叫此函式。"
+            }]
+        }];
+
+        // 給主管用的交接工具
+        const managerTools = [{
+            functionDeclarations: [{
+                name: "handover_to_hr",
+                description: "當你的技術問題問完，準備將面試交還給人資來做結語時，必須呼叫此函式。"
+            }]
+        }];
+
         const addLog = (role, text, type = "speech") => {
             if (!text || text.trim().length === 0) return;
             interviewData.transcript.push({
@@ -99,13 +115,15 @@ function setupWebSocket(server) {
                 2. 針對履歷與自我介紹，提出「行為面試問題」（例如：團隊合作、壓力處理）。
                 3. 每次發言【只能問一個問題】！
                 4. 你的對話對象「只有」應徵者，絕對不要與部門主管對話。
-                
+                5.如果應徵者的回答非常敷衍、太短（如只說「沒有」、「不知道」），或講出無意義的話，請直接追問、要求他詳細說明，或是用語氣平淡的陳述句帶過（例如：「看來你這部分比較少接觸，那我們換個問題...」）。
+
                 【交接規則 (🚨極度重要🚨)】：
                 1. 在你尚未收到系統要求交接的指令前，請持續提問。
-                2. 當系統發送強制指令要求你交棒時，你的發言只能是一句純粹的過場陳述句，絕對不可再問問題。
-                3. 請使用這句標準台詞交棒：「了解，謝謝你的分享。接下來的技術與專業問題，我想交給部門主管來瞭解。」（必須包含「交給」與「主管」）。
-                
+                2. 當系統發送強制指令要求你交棒時，請你講出這句標準台詞：「了解，謝謝你的分享。接下來的技術與專業問題，我想交給部門主管來瞭解。」
+                3. 講完台詞後，請務必立刻呼叫 \`handover_to_manager\` 函式完成交接！  
+
                 【🚨 系統強制限制】：絕對不要輸出任何「動作描述」！禁止輸出如「(點頭)」、「(保持沉默)」等字眼。
+                
                 應徵者履歷資料：${resumeText}
             `;
 
@@ -119,12 +137,13 @@ function setupWebSocket(server) {
                 2. 針對應徵者的履歷或「回答」，提出專業技術問題。
                 3. 每次發言【一次只能問一個問題】！絕對不可以一次丟出兩個以上的問號，問完立刻閉嘴等對方回答。
                 4. 你的對話對象「只有」應徵者，絕對不要與 HR 對話。   
+                5.如果應徵者的回答非常敷衍、太短（如只說「沒有」、「不知道」），或講出無意義的話，請直接追問、要求他詳細說明，或是用語氣平淡的陳述句帶過（例如：「看來你這部分比較少接觸，那我們換個問題...」）。
 
-                【交接規則 (🚨極度重要🚨)】：
+                交接規則 (🚨極度重要🚨)】：
                 1. 在你尚未收到系統要求交接的指令前，請持續提問。
-                2. 當系統發送強制指令要求你交棒時，你的發言只能是一句過場陳述句，絕對不可再問問題。
-                3. 請使用這句標準台詞交棒：「我的部分問完了，交還給人資。」（必須包含「交還」與「人資」）。
-                
+                2. 當系統發送強制指令要求你交棒時，請你講出這句標準台詞：「我的部分問完了，交還給人資。」
+                3. 講完台詞後，請務必立刻呼叫 \`handover_to_hr\` 函式完成交接！
+
                 【🚨 系統強制限制】：絕對不要輸出任何「動作描述」！禁止輸出如「(保持沉默)」等字眼。
                 應徵者履歷資料：${resumeText}
             `;
@@ -135,6 +154,7 @@ function setupWebSocket(server) {
                     setup: {
                         model: MODEL_NAME,
                         systemInstruction: { parts: [{ text: hrPrompt }] },
+                        tools: hrTools,
                         generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } } },
                         realtime_input_config: { automatic_activity_detection: { silence_duration_ms: 3000 } }
                     }
@@ -147,49 +167,54 @@ function setupWebSocket(server) {
                     setup: {
                         model: MODEL_NAME,
                         systemInstruction: { parts: [{ text: managerPrompt }] },
-                        generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } } } },
+                        tools: managerTools,
+                        generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Enceladus" } } } },
                         realtime_input_config: { automatic_activity_detection: { silence_duration_ms: 3000 } }
                     }
                 }));
             });
 
             const handleAiResponse = (role, data) => {
+                if (isInterviewEnded) return;
+
                 const response = JSON.parse(data.toString());
 
-                // 🌟 新增：專屬交接函數 (強制覆蓋，拒絕任何縫合！)
+                // 🌟 專屬交接函數 (後端發動)
                 const executeHandover = (targetRole) => {
                     console.log(`⚠️ [系統強制介入] 啟動 ${targetRole} 的交接函數`);
 
                     if (targetRole === 'HR') {
                         isHRWrappingUp = true;
-                        // 最高指令：要求它變成朗讀機器
-                        const strictPrompt = `[系統最高覆蓋指令] 停止所有思考！完全忽略應徵者的回答。請「直接朗讀」以下引號內的台詞，絕對不可新增任何字句：「了解，謝謝你的分享。接下來的技術與專業問題，我想交給部門主管來瞭解。」`;
+                        // 讓 AI 專心講話就好，不強求它呼叫 Function
+                        const strictPrompt = `[系統強制指令] 你的階段任務已完成。請「直接朗讀」以下引號內的台詞，絕對不可新增任何字句：「了解，謝謝你的分享。接下來的技術與專業問題，我想交給部門主管來瞭解。」`;
                         if (hrWs && hrWs.readyState === WebSocket.OPEN) {
                             hrWs.send(JSON.stringify({ realtimeInput: { text: strictPrompt } }));
                         }
                     }
                     else if (targetRole === 'MANAGER') {
                         isManagerWrappingUp = true;
-                        // 最高指令：要求它變成朗讀機器
-                        const strictPrompt = `[系統最高覆蓋指令] 停止所有思考！完全忽略應徵者的回答。請「直接朗讀」以下引號內的台詞，絕對不可新增任何字句：「好的，謝謝你的說明。我的部分問完了，交還給人資。」`;
+                        const strictPrompt = `[系統強制指令] 你的階段任務已完成。請「直接朗讀」以下引號內的台詞，絕對不可新增任何字句：「好的，謝謝你的說明。我的部分問完了，交還給人資。」`;
                         if (managerWs && managerWs.readyState === WebSocket.OPEN) {
                             managerWs.send(JSON.stringify({ realtimeInput: { text: strictPrompt } }));
                         }
                     }
                 };
 
+                // 面試開場
                 if (response.setupComplete && role === 'HR') {
                     clientWs.send(JSON.stringify({ setupComplete: true }));
                     const kickstartPrompt = `[系統指令] 面試正式開始。請你立刻依照設定，用語音進行開場歡迎，並請應徵者簡單自我介紹。`;
                     hrWs.send(JSON.stringify({ realtimeInput: { text: kickstartPrompt } }));
                 }
 
+                // 🌟 語音傳遞 (只有在當前發言權是自己的時候，才把語音傳遞給前端，避免干擾)
                 if (response.serverContent?.modelTurn?.parts && currentInterviewer === role) {
                     const audioData = JSON.parse(data.toString());
                     audioData.ai_role = role;
                     clientWs.send(JSON.stringify(audioData));
                 }
 
+                // 🌟 處理 AI 轉錄出的文字 (斷句與狀態機推進)
                 if (response.serverContent?.outputTranscription) {
                     if (role === 'HR') hrSpeechBuffer += response.serverContent.outputTranscription.text;
                     else managerSpeechBuffer += response.serverContent.outputTranscription.text;
@@ -230,34 +255,38 @@ function setupWebSocket(server) {
                                     }
                                 }
 
-                                // 🔄 核心交棒切換邏輯
-                                const isHandoverToManager = finalSentence.includes('交給') && finalSentence.includes('主管');
-                                const isHandoverToHR = (finalSentence.includes('交還') || finalSentence.includes('交給')) && finalSentence.includes('人資');
-
-                                if (role === 'HR' && currentInterviewer === 'HR' && isHandoverToManager) {
-                                    console.log('🔄 [權限切換] 麥克風已交給：部門主管');
+                                // 🚀 【核心解法：後端強制切換狀態】
+                                // 當 HR 處於收尾狀態，且這句話講完了，後端直接切換權限！
+                                if (role === 'HR' && isHRWrappingUp && currentInterviewer === 'HR') {
+                                    console.log('🔄 [權限切換] HR 收尾完成，後端強制將麥克風交給：部門主管');
                                     currentInterviewer = 'MANAGER';
+                                    isHRWrappingUp = false; // 🛑 修正 1：用完立刻重置，避免無限輪迴！
 
-                                    // 🌟 修正聲音切斷：給 3 秒延遲讓 HR 播完
                                     setTimeout(() => {
                                         const promptToManager = `[系統指令] HR 已經交棒給你了。請立刻開口提出你的第 1 個技術問題。`;
                                         if (managerWs && managerWs.readyState === WebSocket.OPEN) managerWs.send(JSON.stringify({ realtimeInput: { text: promptToManager } }));
-                                    }, 3000);
+                                    }, 2000);
                                 }
-                                else if (role === 'MANAGER' && currentInterviewer === 'MANAGER' && isHandoverToHR) {
-                                    console.log('🔄 [權限切換] 麥克風已交回：人資');
-                                    currentInterviewer = 'HR';
 
-                                    // 🌟 修正聲音切斷：給 3 秒延遲讓主管播完
+                                // 當主管處於收尾狀態，且這句話講完了，後端直接切換權限！
+                                if (role === 'MANAGER' && isManagerWrappingUp && currentInterviewer === 'MANAGER') {
+                                    console.log('🔄 [權限切換] 部門主管收尾完成，後端強制將麥克風交回：人資');
+                                    currentInterviewer = 'HR';
+                                    isManagerWrappingUp = false; // 🛑 修正 2：用完立刻重置，避免無限輪迴！
+
                                     setTimeout(() => {
                                         const promptToHR = `[系統指令] 部門主管已交還給你。請直接做面試結語，結語務必包含「今天的面試就到這邊結束，請按下結束面試按鈕」。絕對不可再問任何問題。`;
                                         if (hrWs && hrWs.readyState === WebSocket.OPEN) hrWs.send(JSON.stringify({ realtimeInput: { text: promptToHR } }));
-                                    }, 3000);
+                                    }, 2000);
                                 }
 
+                                // 🏁 結束面試的檢查
                                 if (role === 'HR' && currentInterviewer === 'HR' && finalSentence.includes('結束面試按鈕')) {
                                     console.log('🏁 [流程控制] HR 已宣告面試結束，已鎖定麥克風，等待使用者點擊按鈕存檔。');
                                     isInterviewEnded = true;
+
+                                    // 🛑 修正 3：主動發送一個訊號給前端，你可以在前端攔截這個訊號，把麥克風圖示鎖住
+                                    clientWs.send(JSON.stringify({ customType: 'force_end_interview' }));
                                 }
                             }
                         }
