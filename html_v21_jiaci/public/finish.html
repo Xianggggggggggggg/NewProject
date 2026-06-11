@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>面試完成 - CareerLab</title>
+    <style>
+        body {
+            font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+            background-color: #F4F7F6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .success-card {
+            background: white;
+            padding: 50px 40px;
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.05);
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+        }
+        .check-icon {
+            font-size: 80px;
+            color: #1D9E75; /* 象徵成功的綠色 */
+            margin-bottom: 20px;
+            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+        .title {
+            color: #2C3E50;
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+        .message {
+            color: #5C6E7F;
+            font-size: 16px;
+            line-height: 1.8;
+            margin-bottom: 35px;
+        }
+        .highlight {
+            color: #1D9E75;
+            font-weight: bold;
+        }
+        .home-btn {
+            background: #1D9E75;
+            color: white;
+            border: none;
+            padding: 14px 36px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .home-btn:hover {
+            background: #15805e;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(29, 158, 117, 0.3);
+        }
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="success-card">
+        <div class="check-icon">✅</div>
+        
+        <h1 class="title">面試順利完成！辛苦了！</h1>
+        
+        <p class="message">
+            您的面試影音紀錄與專屬 AI 輔助分析，<br>
+            已經 <span class="highlight">安全、完整地加密送達</span> 給人資與部門主管囉！<br><br>
+            系統已經為您妥善保存所有資料。<br>
+            現在請好好放鬆休息，靜候公司的佳音。
+        </p>
+
+        <a href="index.html" class="home-btn">回到系統大廳</a>
+    </div>
+
+</body>
+</html>

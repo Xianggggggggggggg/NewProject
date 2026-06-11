@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>求職者管理 - CareerLab</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/0company.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div id="topbar-container"></div>
+  <div id="sidebar-container"></div>
+
+  <div class="section-container active">
+    <h2 class="page-main-title">👥 求職者管理</h2>
+    
+    <div id="grouped-applicant-list" class="grouped-list-container">
+      <div class="loading-text">資料載入中...</div>
+    </div>
+  </div>
+
+  <div id="applicant-detail-overlay" class="modal-overlay">
+    <div class="register-modal resume-form-modal custom-modal-size">
+      <button class="modal-close-btn" id="btn-close-applicant-modal">✖</button>
+      <h2 class="modal-main-title">應徵者詳細資料</h2>
+      <div class="setting-group">
+        <h3 class="modal-sub-title">📄 履歷資訊</h3>
+        <div id="detail-resume-content" class="resume-info-box"></div>
+      </div>
+      <div class="setting-group">
+        <h3 class="modal-sub-title">🤖 AI 面試表現</h3>
+        <div id="report-container">
+          <iframe id="hr-report-iframe" src="" style="width:100%; height:400px; border:1px solid #ddd; display:none;"></iframe>
+          <div id="no-report-msg" class="no-report-message" style="display:none;">
+            尚未載入面試報告，或該應徵者尚未完成面試。
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 10px;">
+        <button class="btn-action btn-primary" id="hr-report-btn" style="display:none;">📄 放大開啟完整報告</button>
+      </div>
+    </div>
+  </div>
+
+  <template id="applicant-row-template">
+    <div class="applicant-row">
+      <div class="applicant-info">
+        <div class="applicant-name"></div>
+        <div class="applicant-job"></div>
+      </div>
+      <div class="applicant-actions">
+        <select class="status-select">
+          <option value="status-2">等待應徵者面試</option>
+          <option value="status-3">等待HR確認</option>
+          <option value="status-4">已錄取</option>
+          <option value="status-5">未錄取</option>
+        </select>
+        <button class="btn-report">查看報告</button>
+      </div>
+    </div>
+  </template>
+
+  <script src="../js/0company.js"></script>
+</body>
+</html>
