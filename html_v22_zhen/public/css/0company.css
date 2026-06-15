@@ -1,0 +1,459 @@
+/* ================= 1.顏色與玻璃參數變數 (切換為亮色系 Light Mode) ================= */
+    :root {
+      --primary-green: #799851; 
+      --primary-green-hover: #799851;
+      --glass-bg: rgba(255, 255, 255, 0.65);
+      --glass-border: rgba(255, 255, 255, 1);
+      --glass-shadow: rgba(0, 0, 0, 0.05);
+      --glass-blur: blur(16px);
+      --text-main: #2d3436;
+      --text-sub: #636e72;
+    }
+
+    /* ================= 2.全域基礎設定 (淺灰白背景 + 柔和光暈) ================= */
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0; padding: 0; background-color: #f4f7f8;
+      background-image: 
+        radial-gradient(circle at 15% 50%, rgba(16, 172, 132, 0.08), transparent 30%),
+        radial-gradient(circle at 85% 30%, rgba(41, 128, 185, 0.05), transparent 30%);
+      background-size: cover; background-attachment: fixed; color: var(--text-main);
+      height: 100vh; display: flex; flex-direction: column; overflow-x: hidden;
+    }
+
+    .glass-panel {
+      background: var(--glass-bg); backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur); border: 1.5px solid var(--glass-border);
+      border-radius: 16px; box-shadow: 0 8px 32px 0 var(--glass-shadow);
+    }
+
+    #top-bar { 
+      display: none; justify-content: space-between; align-items: center; padding: 15px 20px; 
+      background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); 
+      border-bottom: 1px solid rgba(0,0,0,0.05); z-index: 10; 
+    }
+    .menu-icon { font-size: 28px; cursor: pointer; font-weight: bold; color: var(--text-main); transition: 0.3s; }
+    .menu-icon:hover { color: var(--primary-green); }
+    .top-title { font-size: 20px; font-weight: bold; letter-spacing: 2px; color: var(--text-main); }
+
+    .sidebar { 
+      position: fixed; left: -280px; top: 0; width: 280px; 
+      height: 100%; z-index: 1000; padding: 20px; box-sizing: border-box; transition: left 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); border-radius: 0 20px 20px 0; border-left: none; }
+    .sidebar.open { left: 0; }
+    .sidebar-menu { font-size: 24px; cursor: pointer; margin-bottom: 40px; font-weight: bold; color: var(--text-main); transition: 0.3s; }
+    .sidebar-menu:hover { color: var(--primary-green); }
+    .menu-item { padding: 15px 10px; font-size: 18px; border-bottom: 1px solid rgba(0,0,0,0.05); cursor: pointer; display: flex; align-items: center; gap: 10px; transition: 0.3s; border-radius: 8px; color: var(--text-main); }
+    .menu-item:hover { background: rgba(0,0,0,0.03); color: var(--primary-green); padding-left: 20px; }
+    
+    .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.3); backdrop-filter: blur(4px); z-index: 999; }
+    .overlay.active { display: block; }
+
+    .section-container { display: none; flex: 1; flex-direction: column; position: relative; padding: 30px; overflow-y: auto; }
+    .section-container.active { display: flex; animation: fadeIn 0.5s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    #login-section { justify-content: center; align-items: center; }
+    .logo-text { font-size: 56px; font-weight: 300; letter-spacing: 15px; margin-bottom: 50px; color: var(--text-main); }
+    .auth-box { width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 20px; padding: 40px; }
+    
+    input { padding: 15px; font-size: 16px; background: rgba(255, 255, 255, 0.8); border: 1px solid rgba(0, 0, 0, 0.1); border-radius: 8px; color: var(--text-main); transition: 0.3s; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary-green); background: #fff; box-shadow: 0 0 10px rgba(121, 152, 81, 0.1); }
+
+    button { padding: 14px 0; font-size: 16px; border: 1px solid rgba(0,0,0,0.05); border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s; letter-spacing: 1px; }
+    .btn-green { background: var(--primary-green); border-color: transparent; color: white; }
+    .btn-green:hover { background: var(--primary-green-hover); box-shadow: 0 4px 15px rgba(121, 152, 81, 0.3); }
+    .btn-glass { background: rgba(255, 255, 255, 0.6); color: var(--text-main); border: 1px solid rgba(0,0,0,0.1); }
+    .btn-glass:hover { background: rgba(255, 255, 255, 1); border-color: rgba(0,0,0,0.2); }
+    .btn-row { display: flex; justify-content: space-between; gap: 15px; }
+    .btn-row button, .btn-register { flex: 1; }
+    .divider { text-align: center; margin: 10px 0; color: #bbb; letter-spacing: 2px; }
+
+    .lobby-bg { flex: 1; display: flex; justify-content: center; align-items: center; font-size: 28px; color: var(--text-sub); margin-bottom: 30px; min-height: 400px; letter-spacing: 5px; }
+    .lobby-footer { display: flex; justify-content: center; gap: 150px; }
+    .btn-0job { padding: 15px 40px; font-size: 20px; width: auto; display: inline-block; }
+    .btn-0applicant { padding: 15px 40px; font-size: 20px; width: auto; display: inline-block; }
+
+    .setting-group { margin-bottom: 30px; }
+    .setting-group h3 { margin-bottom: 15px; color: var(--text-main); font-weight: bold; letter-spacing: 1px; }
+    .setting-box { padding: 20px; min-height: 100px; }
+
+    /* ================= 3.大廳專屬動畫效果 (CareerLab) ================= */
+    .career-lab-title {
+      position: relative; /* 讓文字浮在方塊上方 */
+      z-index: 10;
+      font-size: 80px;
+      font-weight: 800;
+      color: var(--primary-green);
+      letter-spacing: 8px;
+      margin: 0;
+      text-shadow: 0 10px 30px rgba(121, 152, 81, 0.3);
+      /* 加入微微的呼吸浮動效果 */
+      animation: floatText 4s ease-in-out infinite; 
+    }
+
+    @keyframes floatText {
+      0% { transform: translateY(0px); }
+      50% { transform: translateY(-10px); }
+      100% { transform: translateY(0px); }
+    }
+
+    /* 掉落方塊的容器 */
+    .falling-blocks {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      overflow: hidden;
+      z-index: 1; /* 墊在文字下方 */
+    }
+
+    /* 單個方塊的基本樣式 */
+    .block {
+      position: absolute;
+      display: block;
+      background: rgba(121, 152, 81, 0.15); /* 使用你們的綠色，帶點透明度 */
+      backdrop-filter: blur(2px);
+      border: 1px solid rgba(121, 152, 81, 0.3);
+      border-radius: 12px;
+      top: -150px; /* 預設藏在最上方 */
+    }
+
+    /* 掉落與旋轉的關鍵影格 */
+    @keyframes fallDown {
+      0% {
+        transform: translateY(-100px) rotate(0deg);
+        opacity: 1;
+      }
+      100% {
+        transform: translateY(800px) rotate(360deg);
+        opacity: 0;
+      }
+    }
+
+    /* 為每個方塊設定更大的尺寸、不同深淺的綠色與掉落時間 */
+    .block.b1 { left: 5%; width: 120px; height: 120px; animation: fallDown 8s linear infinite; animation-delay: 0s; background: rgba(121, 152, 81, 0.1); }
+    .block.b2 { left: 22%; width: 80px; height: 80px; animation: fallDown 6s linear infinite; animation-delay: 2s; background: rgba(121, 152, 81, 0.7); }
+    .block.b3 { left: 40%; width: 180px; height: 180px; animation: fallDown 12s linear infinite; animation-delay: 1s; border-radius: 20%; background: rgba(121, 152, 81, 0.2); }
+    .block.b4 { left: 55%; width: 100px; height: 100px; animation: fallDown 7s linear infinite; animation-delay: 4s; background: rgba(121, 152, 81, 0.5); }
+    .block.b5 { left: 70%; width: 70px; height: 70px; animation: fallDown 5s linear infinite; animation-delay: 0.5s; background: rgba(121, 152, 81, 0.85); /* 顏色最深 */ }
+    .block.b6 { left: 88%; width: 150px; height: 150px; animation: fallDown 9s linear infinite; animation-delay: 2.5s; background: rgba(121, 152, 81, 0.15); }
+    .block.b7 { left: 48%; width: 90px; height: 90px; animation: fallDown 6.5s linear infinite; animation-delay: 3s; background: rgba(121, 152, 81, 0.6); }
+    .block.b8 { left: 15%; width: 110px; height: 110px; animation: fallDown 4.5s linear infinite; animation-delay: 1.5s; background: rgba(121, 152, 81, 0.35); }
+    .block.b9 { left: 80%; width: 220px; height: 220px; animation: fallDown 14s linear infinite; animation-delay: 0.2s; background: rgba(121, 152, 81, 0.08); /* 尺寸最大，顏色最淺 */ }
+    .block.b10 { left: 30%; width: 140px; height: 140px; animation: fallDown 8.5s linear infinite; animation-delay: 3.5s; border-radius: 50%; background: rgba(121, 152, 81, 0.45); }
+
+
+    /* 質感開關 Toggle Switch */
+    .toggle-switch { position: relative; display: inline-block; width: 50px; height: 26px; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .slider { 
+      position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; 
+      background-color: rgba(0,0,0,0.15); transition: .4s; border-radius: 34px; 
+      border: 1px solid rgba(0,0,0,0.05);
+    }
+    .slider:before { 
+      position: absolute; content: ""; height: 20px; width: 20px; left: 2px; bottom: 2px; 
+      background-color: white; transition: .4s; border-radius: 50%; box-shadow: 0 2px 5px rgba(0,0,0,0.2); 
+    }
+    input:checked + .slider { background-color: var(--primary-green); border-color: var(--primary-green); }
+    input:checked + .slider:before { transform: translateX(24px); }
+
+/* ================= 4.職缺管理 (0job.html) 專屬版面 ================= */
+.job-list-wrapper {
+  width: 100%;
+  border-radius: 16px;
+  /* 🌟 1. 拿掉 hidden，改成最大高度與自動捲軸 */
+  max-height: 60vh; 
+  overflow-y: auto; 
+  /* 加個淡淡的外邊框讓邊界更清楚 */
+  border: 1px solid rgba(0,0,0,0.05);
+}
+
+.job-row {
+  display: flex;
+  align-items: center;
+  padding: 20px 30px;
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+  font-size: 18px;
+  color: var(--text-main);
+  transition: 0.3s;
+}
+
+.header-row {
+  /* 🌟 2. 施展黏性魔法，讓標題永遠固定在最上方！ */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  /* 🌟 3. 給標題列不透明的背景，往下滑的時候字才不會打架 */
+  background: rgba(245, 248, 244, 0.95); 
+  backdrop-filter: blur(5px);
+  border-bottom: 2px solid rgba(121, 152, 81, 0.2);
+  font-weight: bold;
+  color: var(--primary-green);
+}
+
+.item-row { cursor: pointer; }
+.item-row:last-child { border-bottom: none; }
+
+/* 滑鼠移到該列時，給予微綠色背景並向右推一點點的動態回饋 */
+.item-row:hover {
+  background: rgba(121, 152, 81, 0.05);
+  padding-left: 35px; 
+}
+
+/* 欄位寬度分配 */
+.col-dept { flex: 1.5; color: var(--text-sub); font-size: 16px; }
+.col-title { flex: 2.5; font-weight: bold; font-size: 20px; }
+.col-count { flex: 1; text-align: center; color: var(--primary-green); font-weight: bold; }
+.col-action { flex: 0.5; text-align: right; }
+
+/* 垃圾桶按鈕 */
+.icon-btn {
+  background: none; border: none; font-size: 22px; cursor: pointer;
+  opacity: 0.4; transition: 0.3s;
+}
+.icon-btn:hover {
+  opacity: 1; transform: scale(1.2); text-shadow: 0 4px 10px rgba(255, 71, 87, 0.5);
+}
+
+/* 右下角浮動新增按鈕 */
+.floating-add-btn {
+  position: fixed;
+  bottom: 40px;
+  right: 40px;
+  padding: 15px 30px;
+  font-size: 18px;
+  background-color: var(--primary-green);
+  color: white;
+  border: none;
+  border-radius: 30px;
+  box-shadow: 0 10px 20px rgba(121, 152, 81, 0.3);
+  cursor: pointer;
+  transition: 0.3s;
+  font-weight: bold;
+  z-index: 100;
+}
+.floating-add-btn:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 15px 25px rgba(121, 152, 81, 0.5);
+  background-color: var(--primary-green-hover);
+}
+
+
+/* ================= 5.0job應徵人數徽章與清單彈窗 ================= */
+
+/* 點擊應徵人數的數字徽章 */
+.count-badge {
+  display: inline-block;
+  padding: 5px 15px;
+  background: rgba(121, 152, 81, 0.1);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: 0.3s;
+}
+.count-badge:hover {
+  background: var(--primary-green);
+  color: white;
+  transform: scale(1.05);
+  box-shadow: 0 4px 10px rgba(121, 152, 81, 0.3);
+}
+
+/* 彈窗內的應徵者列表排版 */
+.applicant-list-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  max-height: 450px;
+  overflow-y: auto;
+  text-align: left;
+  padding-right: 5px; /* 留一點空間給捲軸 */
+}
+.applicant-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.05);
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+}
+.applicant-info {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+/* 圓形大頭貼 (預設用名字最後一個字) */
+.applicant-avatar {
+  width: 45px;
+  height: 45px;
+  background: var(--primary-green);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-weight: bold;
+  font-size: 18px;
+}
+
+/* 狀態標籤與 5 種顏色分類 */
+.status-select {
+  padding: 8px 15px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: bold;
+  border: 1px solid rgba(0,0,0,0.1);
+  cursor: pointer;
+  outline: none;
+  text-align: center;
+  transition: 0.3s;
+  /* 隱藏預設的醜醜下拉箭頭，讓它更像標籤 */
+  appearance: none; 
+  -webkit-appearance: none;
+}
+
+.status-select:hover {
+  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+  transform: translateY(-2px);
+}
+.status-1 { background: #f1f2f6; color: #57606f; } /* 已投遞履歷 (灰) */
+.status-2 { background: #fff2cc; color: #57606f; } /* 等待應徵者面試 (橘d35400)我改了 */
+.status-3 { background: #e0f7fa; color: #57606f; } /* 等待HR確認 (藍0097e6)我改了 */
+.status-4 { background: #d4edda; color: #28a745; } /* 已錄取 (綠) */
+.status-5 { background: #f8d7da; color: #dc3545; } /* 未錄取 (紅) */
+/* 預設尚未點選的樣式 (白底灰字) */
+.status-select.status-empty {
+  background-color: #ffffff;
+  color: #999999;
+  border: 1px solid #e0e0e0;
+}
+/* ================= 6. 求職者管理 (0applicant.html) 專屬版面 ================= */
+
+/* 部門群組的外框 */
+.dept-group {
+  margin-bottom: 40px;
+}
+
+/* 具有質感的部門標題 */
+.dept-title {
+  font-size: 22px;
+  font-weight: bold;
+  color: var(--text-main);
+  margin-bottom: 15px;
+  padding-left: 12px;
+  border-left: 6px solid var(--primary-green);
+}
+
+/* 包覆該部門所有應徵者的半透明容器 */
+.dept-list-container {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(0,0,0,0.05);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+.applicant-row {
+  display: flex;
+  justify-content: space-between; /* 左右推開 */
+  align-items: center; /* 垂直置中 */
+  padding: 20px 25px;
+  background: #fff;
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+  transition: 0.3s;
+}
+
+/* 讓第一個和最後一個圓角貼合背景白框 */
+.applicant-row:first-child { border-radius: 16px 16px 0 0; }
+.applicant-row:last-child { border-bottom: none; border-radius: 0 0 16px 16px; }
+.applicant-row:hover { background: rgba(121, 152, 81, 0.05); padding-left: 30px; }
+
+/* 左側文字群組 */
+.applicant-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.applicant-name { font-size: 18px; font-weight: bold; color: var(--text-main); }
+.applicant-job { font-size: 13px; color: var(--text-sub); }
+
+/* 右側操作群組 */
+.applicant-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+/* ================= 7. 統一操作按鈕樣式 ================= */
+.btn-action {
+  flex: 1;
+  padding: 13px 0;
+  font-size: 14px;
+  border-radius: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+  transition: 0.2s;
+  text-align: center;
+  border: none;
+}
+
+.btn-primary {
+  background: var(--primary-green);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  opacity: 0.88;
+  box-shadow: 0 4px 14px rgba(121, 152, 81, 0.3);
+}
+
+.btn-secondary {
+  background: #fff;
+  color: var(--text-main);
+  border: 1px solid rgba(0,0,0,0.1) !important;
+}
+
+.btn-secondary:hover {
+  background: #f4f7f8;
+
+  padding: 20px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+/* 放大鏡按鈕 */
+.btn-search-detail {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: 0.3s;
+}
+.btn-search-detail:hover {
+  opacity: 1;
+  transform: scale(1.2);
+}
+/*  彈窗右上角叉叉按鈕  */
+.modal-close-btn {
+  position: absolute;
+  top: 20px;
+  right: 25px;
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: var(--text-sub);
+  cursor: pointer;
+  transition: 0.3s;
+  padding: 5px;
+}
+
+.modal-close-btn:hover {
+  color: #ff4757; /* 移過去變紅色警告色 */
+  transform: scale(1.2) rotate(90deg); /* 移過去稍微放大並旋轉，增加微互動感 */
+}
