@@ -82,7 +82,7 @@ router.get('/active-sessions', async (req, res) => {
 
         if (error) throw error;
         
-        res.json({ success: true, sessions: data });
+        res.json({ success: true, data: data });
     } catch (err) {
         console.error('撈取進行中名單失敗:', err);
         res.status(500).json({ success: false, error: err.message });
