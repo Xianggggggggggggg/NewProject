@@ -300,14 +300,17 @@ router.delete('/resume/:id', async (req, res) => {
 router.post('/interview-sessions', async (req, res) => {
     const { user } = await getCurrentUser(req);
     if (!user) return res.status(401).json({ error: '未登入' });
+    
     const { data, error } = await supabase.from('interview_sessions').insert([{
         applicant_id: user.id,
         resume_id: req.body.resume_id,
         applied_position: req.body.position,
         interview_type: req.body.type,
-        status: '進行中',
+        job_id: req.body.job_id, // 🚀 關鍵修復：成功把 job_id 寫入資料庫！
+        status: 'status-2', // 🎯 設為 status-2 (等待應徵者面試)，這樣企業端一打開就會是橘色標籤
         start_time: new Date().toISOString()
     }]).select();
+    
     if (error) return res.status(500).json({ error: error.message });
     res.json({ session_id: data[0].session_id });
 });

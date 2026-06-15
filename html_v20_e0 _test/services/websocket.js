@@ -15,7 +15,7 @@ function setupWebSocket(server) {
     if (!fs.existsSync(logDir)) fs.mkdirSync(logDir);
 
     wss.on('connection', (clientWs) => {
-        console.log('\n🟢 [前端] 已連線 (目前測試版本：AI 自主算題數 + 完美交接防打斷版 + WebRTC 真人連線)');
+        console.log('\n🟢 [前端] 已連線 (完美合併版：WebRTC 真人連線 + AI 智慧交接)');
 
         let currentSessionId = null;
         let interviewData = { transcript: [] };
@@ -37,7 +37,6 @@ function setupWebSocket(server) {
         let hrFlushTimeout = null;
         let managerFlushTimeout = null;
 
-        // ⚠️ 保留計數器印出 Log 方便觀測，但後端不再基於此發送強制指令
         let hrSpeakCount = 0;
         let managerSpeakCount = 0;
 
@@ -50,14 +49,13 @@ function setupWebSocket(server) {
             try {
                 if (!currentSessionId) return;
 
-                // 🌟 修正 1：不管有沒有對話紀錄，先無條件把狀態改成「已結束」！
+                // 🌟 不管有沒有對話紀錄，先無條件把狀態改成「已結束」
                 const { error: updateErr } = await supabase.from('interview_sessions')
                     .update({ status: '已結束', end_time: new Date().toISOString() })
                     .eq('session_id', currentSessionId);
                 
                 if (updateErr) throw updateErr;
 
-                // 🌟 修正 2：再來處理對話紀錄
                 const fullConversationLog = interviewData.transcript
                     .filter(item => item.type === "speech")
                     .map(item => {
@@ -68,7 +66,6 @@ function setupWebSocket(server) {
                     })
                     .join('\n\n');
 
-                // 如果真的沒有講到話，就停在這裡，不要寫入 transcripts 表
                 if (!fullConversationLog) {
                     console.log(`✅ 面試已標記結束 (無對話紀錄)`);
                     return; 
@@ -84,18 +81,15 @@ function setupWebSocket(server) {
             }
         };
 
-        targetCount = 3;
-        // 修改函數簽名，接受 targetCount 與 jobDetailsText
         const startGeminiConnections = (resumeText, position, interview_type, targetCount, jobDetailsText) => {
 
-            // 🌟 將控制權完全還給 AI，用劇本指導它自己算題數，並加入負面提示詞
             const hrPrompt = `
                 你現在正與「部門主管」共同面試一位應徵「${position}」的候選人。
                 【人格設定】：你是資深 HR 面試官。語氣專業、親切。
                 
                 【🚨 面試流程與嚴格提問限制 (請你在心裡默默計數)】：
                 1. 【開場】：熱情歡迎應徵者，並請他簡單自我介紹。
-                2. 【提問階段】：聽完介紹後，只能提出「軟實力與行為面試問題 (Behavioral Questions)」，例如：團隊合作、溝通協調、壓力處理、或解決困難的經驗。
+                2. 【提問階段】：聽完介紹後，只能提出「軟實力與行為面試問題 (Behavioral Questions)」。
                 3. 【提問額度】：你總共只能問【 ${targetCount} 】個問題！這非常重要！
                 4. 【🚨強制交接🚨】：當你問完第 ${targetCount} 個問題，並且聽完應徵者的回答後，你【絕對不可以】再提問或給回饋！請立刻、直接唸出下方的交接標準台詞。
                 
@@ -105,7 +99,7 @@ function setupWebSocket(server) {
                 【系統限制】：每次發言只能問一個問題。絕對不要輸出任何「(動作描述)」。你的對話對象只有應徵者。
                 應徵者履歷：\n${resumeText}
                 本職缺詳細需求：\n${jobDetailsText}
-                `;
+            `;
 
             const managerPrompt = `
                 你現在正與「HR(人資)」共同面試一位應徵「${position}」的候選人。面試類型為：${interview_type}
@@ -115,8 +109,7 @@ function setupWebSocket(server) {
                 系統一開始不會給你聲音。當你收到「HR已經交棒給你」的指令時，代表輪到你面試了。
                 1. 【提問階段】：每次發言【只能問 1 個問題】。請緊扣職缺需求與履歷提問專業技術問題。
                 2. 【提問額度】：你總共只能問【 ${targetCount} 】個問題！這非常重要！
-                3. 【🚨強制交接🚨】：當你問完第 ${targetCount} 個問題，並且聽完應徵者的回答後，你【絕對不可以】再提出任何新問題，也【絕對不可以】針對他的回答給予任何技術評價或回饋！
-                請你立刻、直接唸出下方的交接標準台詞，絕不允許增加任何其他字句。
+                3. 【🚨強制交接🚨】：當你問完第 ${targetCount} 個問題，並且聽完應徵者的回答後，請立刻、直接唸出下方的交接標準台詞，絕不允許增加任何其他字句。
                 
                 【交接標準台詞】：
                 「我的部分問完了，交還給人資。」
@@ -171,7 +164,6 @@ function setupWebSocket(server) {
                                 addLog(`ai_${role}`, finalSentence, "speech");
                                 if (currentInterviewer === role) clientWs.send(JSON.stringify({ customType: 'ai_transcript_final', ai_role: role, text: finalSentence }));
 
-                                // 🎯 單純印出 Log 觀測 AI 的自主提問次數，後端不再做任何強制干預
                                 const isRealQuestion = (finalSentence.includes('？') || finalSentence.includes('?')) && finalSentence.length > 10;
                                 if (role === 'HR' && currentInterviewer === 'HR' && isRealQuestion) {
                                     hrSpeakCount++;
@@ -182,59 +174,36 @@ function setupWebSocket(server) {
                                     console.log(`📊 [觀測記錄] AI(主管) 自己決定問了第 ${managerSpeakCount} 個問題`);
                                 }
 
-                                // 🔄 當 AI 自主講出交接台詞時，後端執行麥克風切換與歷史紀錄打包
+                                // 🔄 系統判斷交接字眼，執行麥克風切換
                                 const isHandoverToManager = finalSentence.includes('交給') && finalSentence.includes('主管');
                                 const isHandoverToHR = (finalSentence.includes('交還') || finalSentence.includes('交給')) && finalSentence.includes('人資');
 
                                 if (role === 'HR' && currentInterviewer === 'HR' && isHandoverToManager && !hasHandedOverToManager) {
                                     hasHandedOverToManager = true;
                                     currentInterviewer = 'HANDOVER';
-                                    const delayTime = 1000; // 1秒過場
-
+                                    
                                     setTimeout(() => {
                                         currentInterviewer = 'MANAGER';
                                         isAiSpeaking = true;
-
-                                        const recentHistory = interviewData.transcript.slice(-6).map(t => {
-                                            let speaker = '應徵者';
-                                            if (t.role === 'ai_HR') speaker = 'HR 面試官';
-                                            if (t.role === 'ai_MANAGER') speaker = '部門主管';
-                                            return `${speaker}: ${t.content}`;
-                                        }).join('\n');
-
-                                        const promptToManager = `[系統強制指令] HR 已交棒給你。以下是剛才的對話紀錄：\n\n${recentHistory}\n\n請立刻用語音開口，對應徵者提出你的第 1 個專業技術問題！絕對不能只輸出文字。`;
-
-                                        if (managerWs && managerWs.readyState === WebSocket.OPEN) {
-                                            managerWs.send(JSON.stringify({ realtimeInput: { text: promptToManager } }));
-                                        }
-                                    }, delayTime);
+                                        const promptToManager = `[系統強制指令] HR 已交棒給你。請立刻用語音開口，對應徵者提出你的第 1 個專業技術問題！絕對不能只輸出文字。`;
+                                        if (managerWs && managerWs.readyState === WebSocket.OPEN) managerWs.send(JSON.stringify({ realtimeInput: { text: promptToManager } }));
+                                    }, 1000);
                                 }
                                 else if (role === 'MANAGER' && currentInterviewer === 'MANAGER' && isHandoverToHR && !hasHandedOverToHR) {
                                     hasHandedOverToHR = true;
                                     currentInterviewer = 'HANDOVER';
-                                    const delayTime = 1000; // 1秒過場
 
                                     setTimeout(() => {
                                         currentInterviewer = 'HR';
                                         isAiSpeaking = true;
-
-                                        const recentHistory = interviewData.transcript.slice(-6).map(t => {
-                                            let speaker = '應徵者';
-                                            if (t.role === 'ai_HR') speaker = 'HR 面試官';
-                                            if (t.role === 'ai_MANAGER') speaker = '部門主管';
-                                            return `${speaker}: ${t.content}`;
-                                        }).join('\n');
-
-                                        const promptToHR = `[系統強制指令] 部門主管已將時間交還給你。以下是剛才的對話：\n\n${recentHistory}\n\n請立刻用語音做面試結語，務必包含「今天的面試就到這邊結束，請按下結束面試按鈕」。絕對不可再問任何問題。`;
-
-                                        if (hrWs && hrWs.readyState === WebSocket.OPEN) {
-                                            hrWs.send(JSON.stringify({ realtimeInput: { text: promptToHR } }));
-                                        }
-                                    }, delayTime);
+                                        const promptToHR = `[系統強制指令] 部門主管已將時間交還給你。請立刻用語音做面試結語，務必包含「今天的面試就到這邊結束，請按下結束面試按鈕」。絕對不可再問任何問題。`;
+                                        if (hrWs && hrWs.readyState === WebSocket.OPEN) hrWs.send(JSON.stringify({ realtimeInput: { text: promptToHR } }));
+                                    }, 1000);
                                 }
 
                                 if (role === 'HR' && currentInterviewer === 'HR' && finalSentence.includes('結束面試按鈕')) {
                                     isInterviewEnded = true;
+                                    clientWs.send(JSON.stringify({ customType: 'force_end_interview' })); // 通知前端鎖住麥克風
                                 }
                             }
                         }
@@ -260,13 +229,13 @@ function setupWebSocket(server) {
             try {
                 const parsedMsg = JSON.parse(msg.toString());
 
-                // 🌟 【綁定房號】：當收到初始化或 HR 加入的訊號時，把 sessionId 貼到這個連線物件上
+                // 🌟 【綁定房號】：把 sessionId 貼到這個連線物件上
                 if (parsedMsg.sessionId) {
                     clientWs.sessionId = parsedMsg.sessionId;
                 }
 
                 // ==========================================
-                // 🌟 新增：攔截並轉發 WebRTC (精準包廂制)
+                // 🌟 核心：攔截並轉發 WebRTC (戰情室精準包廂制)
                 // ==========================================
                 if (parsedMsg.type === 'webrtc_offer' || 
                     parsedMsg.type === 'webrtc_answer' || 
@@ -275,24 +244,17 @@ function setupWebSocket(server) {
                     
                     console.log(`📡 [WebRTC] 房號 [${parsedMsg.sessionId}] 轉發訊號: ${parsedMsg.type}`);
                     
-                    // 🎯 核心關鍵：只轉發給「同一個 session_id」的連線者！
                     wss.clients.forEach(client => {
-                        if (client !== clientWs && 
-                            client.readyState === WebSocket.OPEN && 
-                            client.sessionId === parsedMsg.sessionId) { // 👈 檢查房號
+                        if (client !== clientWs && client.readyState === WebSocket.OPEN && client.sessionId === parsedMsg.sessionId) { 
                             client.send(msg.toString());
                         }
                     });
-                    
-                    return; // ⚠️ 轉發完立刻結束
+                    return; 
                 }
-                // ==========================================
 
-                // 👇 這裡開始接續你原本的邏輯
                 if (parsedMsg.customType === 'init_interview') {
                     currentSessionId = parsedMsg.sessionId;
-                    // 預設給予 2 題，若前端有傳遞則覆蓋
-                    const { resumeId, position, interview_type, questionCount = 2, jobId } = parsedMsg;
+                    const { resumeId, position, interview_type, questionCount = 3, jobId } = parsedMsg;
 
                     await supabase.from('interview_sessions').update({ applied_position: position, interview_type: interview_type, resume_id: resumeId }).eq('session_id', currentSessionId);
 
@@ -306,7 +268,6 @@ function setupWebSocket(server) {
                         if (jobData && !jobErr) jobDetailsText = `【工作內容】：\n${jobData.job_description}\n\n【條件要求】：\n${jobData.requirements}`;
                     }
 
-                    // 將題數與職缺資料帶入連線設定中
                     startGeminiConnections(resumeText, position, interview_type, questionCount, jobDetailsText);
                     return;
                 }
@@ -321,15 +282,14 @@ function setupWebSocket(server) {
                 }
 
                 if (parsedMsg.realtimeInput) {
-                    if (isInterviewEnded || currentInterviewer === 'HANDOVER' || isAiSpeaking) {
-                        return;
-                    }
+                    // 🛡️ 防禦機制：AI 說話時、交接中、或面試結束時，忽略前端傳來的麥克風聲音
+                    if (isInterviewEnded || currentInterviewer === 'HANDOVER' || isAiSpeaking) return;
 
                     if (currentInterviewer === 'HR' && hrWs && hrWs.readyState === WebSocket.OPEN) hrWs.send(msg.toString());
                     else if (currentInterviewer === 'MANAGER' && managerWs && managerWs.readyState === WebSocket.OPEN) managerWs.send(msg.toString());
                 }
             } catch (e) { 
-                // 忽略解析錯誤或非 JSON 的封包
+                // 忽略解析錯誤
             }
         });
 

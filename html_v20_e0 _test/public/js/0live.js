@@ -34,7 +34,7 @@ async function fetchActiveSessions() {
     
     try {
         // 🌟 核心修正：不再直接呼叫 supabase，而是向我們自己的後端 API 請求資料
-        const response = await fetch('/api/company/active-sessions');
+        const response = await fetch('http://localhost:3001/api/company/active-sessions');
         const result = await response.json();
 
         if (!result.success) {
