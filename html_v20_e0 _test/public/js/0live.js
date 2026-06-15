@@ -33,25 +33,25 @@ async function fetchActiveSessions() {
     const listContainer = document.getElementById('active-sessions-list');
     
     try {
-        // 🌟 核心修正：不再直接呼叫 supabase，而是向我們自己的後端 API 請求資料
-        const response = await fetch('http://localhost:3001/api/company/active-sessions');
+        // 🌟 核心修正：使用「相對路徑」。
+        // 這樣在本地端會自動找 localhost，在雲端會自動找 Render 網址，完美相容！
+        const response = await fetch('/api/company/active-sessions');
         const result = await response.json();
 
         if (!result.success) {
             throw new Error(result.message || "後端 API 回傳失敗狀態");
         }
 
-        const data = result.data; // 拿出後端幫我們抓好的資料
+        const data = result.data;
 
         if (!data || data.length === 0) {
             listContainer.innerHTML = '<div style="color: #888; text-align: center; padding: 20px;">目前沒有正在進行中的面試。</div>';
             return;
         }
 
-        listContainer.innerHTML = ''; // 清空載入中文字
+        listContainer.innerHTML = ''; 
         
         data.forEach(session => {
-            // 🛡️ 防呆機制：處理名字
             let applicantName = '未知應徵者';
             if (session.applicants && session.applicants.name) {
                 applicantName = session.applicants.name;
@@ -59,7 +59,6 @@ async function fetchActiveSessions() {
                 applicantName = `求職者 (${session.applicant_id.substring(0, 5)}...)`;
             }
             
-            // 建立卡片
             const card = document.createElement('div');
             card.className = 'room-card';
             card.style.marginBottom = '15px';
