@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>求職者管理 - CareerLab</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/0company.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div id="topbar-container"></div>
+  <div id="sidebar-container"></div>
+
+  <div class="section-container active">
+    <h2 style="color: var(--primary-green); margin-bottom: 30px;">👥 求職者管理</h2>
+    
+    <div id="grouped-applicant-list" style="width: 100%; "></div>
+  </div>
+
+  <div id="applicant-detail-overlay" class="modal-overlay">
+    <div class="register-modal resume-form-modal" style="max-width: 1000px; text-align: left; position: relative;">
+      
+      <button class="modal-close-btn" onclick="closeApplicantDetailModal()">✖</button>
+
+      <h2 id="detail-modal-title" style="color: var(--primary-green); margin-bottom: 20px; text-align: center;">應徵者詳細資料</h2>
+
+      <div class="setting-group">
+        <h3 style="border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 10px;">📄 履歷資訊</h3>
+        <div id="detail-resume-content" style="margin-top: 15px; line-height: 1.6;"></div>
+      </div>
+
+      <div class="setting-group" style="margin-top: 25px;">
+        <h3 style="border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 10px;">🤖 AI 面試表現</h3>
+        <div id="detail-ai-content" style="margin-top: 15px; line-height: 1.6;"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../js/0company.js" defer></script>
+</body>
+</html>
