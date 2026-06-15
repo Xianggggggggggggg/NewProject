@@ -256,7 +256,13 @@ function setupWebSocket(server) {
                     currentSessionId = parsedMsg.sessionId;
                     const { resumeId, position, interview_type, questionCount = 3, jobId } = parsedMsg;
 
-                    await supabase.from('interview_sessions').update({ applied_position: position, interview_type: interview_type, resume_id: resumeId }).eq('session_id', currentSessionId);
+                    // 👇 這裡補上了 status: '進行中'
+                    await supabase.from('interview_sessions').update({ 
+                        applied_position: position, 
+                        interview_type: interview_type, 
+                        resume_id: resumeId,
+                        status: '進行中' 
+                    }).eq('session_id', currentSessionId);
 
                     let resumeText = "無資料";
                     const { data: resumeData } = await supabase.from('resumes').select('*').eq('resume_id', resumeId).single();
