@@ -233,7 +233,12 @@ function setupWebSocket(server) {
                                 console.log(`🛡️ [系統攔截] 成功阻擋 ${role} 內心獨白: ${finalSentence}`);
                             } else {
                                 addLog(`ai_${role}`, finalSentence, "speech");
-                                if (currentInterviewer === role) clientWs.send(JSON.stringify({ customType: 'ai_transcript_final', ai_role: role, text: finalSentence }));
+                                if (currentInterviewer === role) {
+                                    const aiMsg = JSON.stringify({ customType: 'ai_transcript_final', ai_role: role, text: finalSentence });
+                                    wss.clients.forEach(c => { 
+                                        if (c.readyState === WebSocket.OPEN && c.sessionId === currentSessionId) c.send(aiMsg); 
+                                    });
+                                }
 
                                 const isRealQuestion = (finalSentence.includes('？') || finalSentence.includes('?')) && finalSentence.length > 10;
 
@@ -294,7 +299,10 @@ function setupWebSocket(server) {
                     let userText = convert(response.serverContent.inputTranscription.text).replace(/\s+/g, '');
                     userText = userText.replace(/^[,，]+/, '').replace(/[,，]{2,}/g, '，');
                     addLog("user", userText, "speech");
-                    clientWs.send(JSON.stringify({ customType: 'user_transcript', text: userText }));
+                    const userMsg = JSON.stringify({ customType: 'user_transcript', text: userText });
+                    wss.clients.forEach(c => { 
+                        if (c.readyState === WebSocket.OPEN && c.sessionId === currentSessionId) c.send(userMsg); 
+                    });
 
                     // 🎯 只要達標，觸發組員寫的交接函數
                     if (role === 'HR' && hrSpeakCount >= hrtargetCount && !isHRWrappingUp) executeHandover('HR');

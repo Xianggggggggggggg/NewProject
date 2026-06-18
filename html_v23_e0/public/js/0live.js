@@ -5,7 +5,15 @@ let targetSessionId = null;
 
 const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
+// 🌟 音效與動畫全域變數 (戰情室專用)
+window.audioAnimationQueue = [];
+window.audioContext = null;
+let activeSources = [];
+let nextPlayTime = 0;
+
+// ==========================================
 // 1. 頁面載入時的判斷邏輯
+// ==========================================
 document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
     targetSessionId = urlParams.get('session_id');
@@ -24,17 +32,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+// ==========================================
 // 2. 去 Supabase 撈取「進行中」的面試
 // ==========================================
-// 打開 public/js/0live.js，完全替換掉 fetchActiveSessions 函數
-// ==========================================
-
 async function fetchActiveSessions() {
     const listContainer = document.getElementById('active-sessions-list');
     
     try {
-        // 🌟 核心修正：使用「相對路徑」。
-        // 這樣在本地端會自動找 localhost，在雲端會自動找 Render 網址，完美相容！
         const response = await fetch('/api/company/active-sessions');
         const result = await response.json();
 
@@ -90,7 +94,9 @@ async function fetchActiveSessions() {
     }
 }
 
-// 3. 設定 WebSocket 連線
+// ==========================================
+// 3. 設定 WebSocket 連線與廣播接收
+// ==========================================
 function setupWebSocket() {
     const backendUrl = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
         ? 'ws://localhost:3001' : `wss://${window.location.host}`;
@@ -104,19 +110,49 @@ function setupWebSocket() {
     ws.onmessage = async (event) => {
         const data = JSON.parse(event.data);
         
+        // 📡 接收 WebRTC 視訊連線訊號
         if (data.type === 'webrtc_answer') {
             await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
         }
         if (data.type === 'webrtc_ice_candidate') {
             await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
         }
+
+        // 🌟 接收廣播來的文字紀錄
+        if (data.customType === 'user_transcript') {
+            appendTranscript('user', data.text);
+        }
+        if (data.customType === 'ai_transcript_final') {
+            const finalRole = data.ai_role || 'MANAGER';
+            appendTranscript('ai', data.text, finalRole);
+        }
+
+        // 🌟 接收廣播來的 AI 聲音，並觸發戰情室的影片動嘴巴！
+        if (data.serverContent?.modelTurn?.parts) {
+            let roleStr = data.ai_role || 'MANAGER';
+            let targetId = roleStr.includes('HR') ? 'aiModel_HR' : 'aiModel_Tech';
+
+            for (const part of data.serverContent.modelTurn.parts) {
+                if (part.inlineData && part.inlineData.data) {
+                    playAudio(part.inlineData.data, targetId); 
+                }
+            }
+        }
     };
 }
 
+// ==========================================
 // 4. HR 按下「確認潛入並開啟鏡頭」
+// ==========================================
 async function startHumanInterview() {
     document.getElementById('startCallBtn').disabled = true;
     document.getElementById('startCallBtn').innerText = "連線中...";
+
+    // 啟動音效大腦 (瀏覽器規定必須在按鈕點擊時啟動)
+    if (!window.audioContext) {
+        window.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+    }
+    if (window.audioContext.state === 'suspended') await window.audioContext.resume();
 
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     document.getElementById('localHrVideo').srcObject = localStream;
@@ -133,7 +169,7 @@ async function startHumanInterview() {
 
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
-            // 🌟 核心：發送的所有訊號都要夾帶 sessionId
+            // 發送的所有訊號都要夾帶 sessionId
             ws.send(JSON.stringify({ 
                 type: 'webrtc_ice_candidate', 
                 candidate: event.candidate,
@@ -145,7 +181,131 @@ async function startHumanInterview() {
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
     
-    // 🌟 核心：發送的所有訊號都要夾帶 sessionId
+    // 發送潛入通知與視訊邀請
     ws.send(JSON.stringify({ type: 'human_hr_joined', sessionId: targetSessionId })); 
     ws.send(JSON.stringify({ type: 'webrtc_offer', offer: offer, sessionId: targetSessionId }));
 }
+
+// ==========================================
+// 🌟 5. 戰情室專屬：對話紀錄渲染器
+// ==========================================
+function appendTranscript(role, text, ai_role = 'HR') {
+    if (!text.trim()) return;
+    const box = document.getElementById('transcriptBox');
+    if (!box) return;
+
+    // 清除「等待面試對話開始...」的提示字
+    if (box.innerHTML.includes('等待面試對話開始')) {
+        box.innerHTML = '<h3 style="margin-top:0; border-bottom: 1px solid #ccc; padding-bottom: 10px;">即時對話監聽紀錄</h3>';
+    }
+
+    const msgDiv = document.createElement('div');
+    msgDiv.style.margin = "10px 0";
+    msgDiv.style.padding = "10px";
+    msgDiv.style.borderRadius = "8px";
+    msgDiv.style.fontSize = "15px";
+    msgDiv.style.lineHeight = "1.5";
+
+    if (role === 'ai') {
+        if (ai_role.includes('HR')) {
+            msgDiv.style.backgroundColor = "#f0f0f0"; 
+            msgDiv.style.color = "#333";
+            msgDiv.innerText = '👩‍💼 人資 (HR)：\n' + text;
+        } else {
+            msgDiv.style.backgroundColor = "#ffebee"; 
+            msgDiv.style.color = "#c62828";
+            msgDiv.innerText = '👨‍💻 部門主管：\n' + text;
+        }
+        msgDiv.style.textAlign = "left";
+    } else {
+        msgDiv.style.backgroundColor = "#e8f0fe"; 
+        msgDiv.style.color = "#1a73e8";
+        msgDiv.style.textAlign = "right";
+        msgDiv.innerText = '👤 應徵者：\n' + text;
+    }
+
+    box.appendChild(msgDiv);
+    box.scrollTop = box.scrollHeight;
+}
+
+// ==========================================
+// 🌟 6. AI 動態對嘴與音效引擎 (戰情室上帝視角版)
+// ==========================================
+async function playAudio(base64Data, targetId) {
+    try {
+        if (!targetId) targetId = 'aiModel_Tech';
+
+        if (!window.audioContext) {
+            window.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        }
+        if (window.audioContext.state === 'suspended') await window.audioContext.resume();
+
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+        const int16Array = new Int16Array(bytes.buffer);
+        
+        const audioBuffer = window.audioContext.createBuffer(1, int16Array.length, 24000);
+        audioBuffer.getChannelData(0).set(Array.from(int16Array).map(v => v / 32768.0));
+
+        const source = window.audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(window.audioContext.destination);
+        activeSources.push(source);
+
+        const now = window.audioContext.currentTime;
+        if (nextPlayTime < now) nextPlayTime = now;
+
+        window.audioAnimationQueue.push({
+            targetId: targetId,
+            startTime: nextPlayTime,
+            endTime: nextPlayTime + audioBuffer.duration
+        });
+
+        source.start(nextPlayTime);
+        nextPlayTime += audioBuffer.duration;
+    } catch (err) {
+        console.error("❌ playAudio 發生錯誤:", err);
+    }
+}
+
+function initGlobalAnimationLoop() {
+    const runGlobalLoop = () => {
+        const ctx = window.audioContext || null;
+        const now = ctx ? ctx.currentTime : 0;
+        
+        const activeTurn = window.audioAnimationQueue.find(item => now >= item.startTime && now <= item.endTime);
+        const activeTargetId = activeTurn ? activeTurn.targetId : null;
+
+        window.audioAnimationQueue = window.audioAnimationQueue.filter(item => now <= item.endTime);
+
+        const talkVideoTech = document.getElementById('talkVideo_Tech');
+        const talkVideoHR = document.getElementById('talkVideo_HR');
+
+        if (talkVideoTech && talkVideoHR) {
+            if (activeTargetId === 'aiModel_Tech') {
+                if (!talkVideoTech.classList.contains('active')) {
+                    talkVideoTech.currentTime = 0; 
+                    talkVideoTech.play().catch(e => {});
+                    talkVideoTech.classList.add('active'); 
+                }
+                talkVideoHR.classList.remove('active'); 
+            } else if (activeTargetId === 'aiModel_HR') {
+                if (!talkVideoHR.classList.contains('active')) {
+                    talkVideoHR.currentTime = 0;
+                    talkVideoHR.play().catch(e => {});
+                    talkVideoHR.classList.add('active'); 
+                }
+                talkVideoTech.classList.remove('active'); 
+            } else {
+                talkVideoTech.classList.remove('active');
+                talkVideoHR.classList.remove('active');
+            }
+        }
+        requestAnimationFrame(runGlobalLoop);
+    };
+    requestAnimationFrame(runGlobalLoop);
+}
+
+// 啟動戰情室動畫迴圈
+initGlobalAnimationLoop();
