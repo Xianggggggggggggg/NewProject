@@ -36,6 +36,7 @@ let nextPlayTime = 0;
 let activeSources = [];
 let avatarMesh = null; 
 let aiModelElement = null;
+let iceCandidateQueue = []; // 新增：路徑排隊區
 
 // 🌟 WebRTC 專屬變數 (新增)
 let peerConnection;
@@ -459,7 +460,7 @@ async function startInterviewAI() {
                 if(hrVideo) hrVideo.style.display = 'block';
             }
 
-            // 2. 收到企業端的連線邀請 (Offer)
+                // 2. 收到企業端的連線邀請 (Offer)
             if (data.type === 'webrtc_offer') {
                 peerConnection = new RTCPeerConnection(rtcConfig);
 
@@ -480,26 +481,37 @@ async function startInterviewAI() {
                         ws.send(JSON.stringify({ 
                             type: 'webrtc_ice_candidate', 
                             candidate: event.candidate,
-                            sessionId: sessionId // 🌟 夾帶房號
+                            sessionId: sessionId 
                         }));
                     }
                 };
 
+                // 🌟 關鍵修復：等待名片讀取完成
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+
+                // 🌟 將剛剛卡在門外的 ICE 路徑封包全部放行！
+                iceCandidateQueue.forEach(c => peerConnection.addIceCandidate(c));
+                iceCandidateQueue = [];
+
                 const answer = await peerConnection.createAnswer();
                 await peerConnection.setLocalDescription(answer);
-                
+
                 ws.send(JSON.stringify({ 
                     type: 'webrtc_answer', 
                     answer: answer,
-                    sessionId: sessionId // 🌟 夾帶房號
+                    sessionId: sessionId 
                 }));
             }
 
             // 3. 接收企業端的網路路徑
             if (data.type === 'webrtc_ice_candidate') {
                 if (peerConnection) {
-                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                    // 🌟 關鍵修復：如果名片還沒讀完，先讓路徑封包去排隊
+                    if (peerConnection.remoteDescription) {
+                        await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                    } else {
+                        iceCandidateQueue.push(new RTCIceCandidate(data.candidate));
+                    }
                 }
             }
             // ==========================================

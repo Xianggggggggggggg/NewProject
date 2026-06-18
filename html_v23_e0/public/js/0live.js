@@ -2,6 +2,7 @@ let localStream;
 let peerConnection;
 let ws;
 let targetSessionId = null;
+let iceCandidateQueue = []; // 新增：路徑排隊區
 
 const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
@@ -111,12 +112,24 @@ function setupWebSocket() {
         const data = JSON.parse(event.data);
         
         // 📡 接收 WebRTC 視訊連線訊號
-        if (data.type === 'webrtc_answer') {
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-        }
-        if (data.type === 'webrtc_ice_candidate') {
-            await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-        }
+     if (data.type === 'webrtc_answer') {
+         await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+
+         // 🌟 門打開後，把排隊的封包放進去
+         iceCandidateQueue.forEach(c => peerConnection.addIceCandidate(c));
+         iceCandidateQueue = [];
+     }
+
+     if (data.type === 'webrtc_ice_candidate') {
+         if (peerConnection) {
+             // 🌟 如果門還沒開，先排隊
+             if (peerConnection.remoteDescription) {
+                 await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+             } else {
+                 iceCandidateQueue.push(new RTCIceCandidate(data.candidate));
+             }
+         }
+     }
 
         // 🌟 接收廣播來的文字紀錄
         if (data.customType === 'user_transcript') {
