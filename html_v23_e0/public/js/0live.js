@@ -160,7 +160,9 @@ function setupWebSocket() {
 async function startHumanInterview() {
     document.getElementById('startCallBtn').disabled = true;
     document.getElementById('startCallBtn').innerText = "連線中...";
-
+    document.getElementById('interventionBtn').style.display = 'inline-block';
+    document.getElementById('toggleCamBtn').style.display = 'inline-block';
+    document.getElementById('toggleMicBtn').style.display = 'inline-block';
     // 啟動音效大腦 (瀏覽器規定必須在按鈕點擊時啟動)
     if (!window.audioContext) {
         window.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
@@ -320,5 +322,74 @@ function initGlobalAnimationLoop() {
     requestAnimationFrame(runGlobalLoop);
 }
 
+// ==========================================
+// 🌟 7. 真人插話控制邏輯
+// ==========================================
+let isIntervening = false;
+function toggleIntervention() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        alert("系統尚未與後端連線！");
+        return;
+    }
+    
+    const btn = document.getElementById('interventionBtn');
+    isIntervening = !isIntervening; // 切換狀態
+    
+    if (isIntervening) {
+        // 切換為「恢復」狀態
+        btn.innerText = "▶️ 恢復 AI 面試";
+        btn.style.background = "#1D9E75";
+        ws.send(JSON.stringify({ type: 'pause_ai', sessionId: targetSessionId }));
+        console.log("已發送暫停 AI 指令");
+    } else {
+        // 切換為「暫停」狀態
+        btn.innerText = "✋ 暫停 AI (我要插話)";
+        btn.style.background = "#e67e22";
+        ws.send(JSON.stringify({ type: 'resume_ai', sessionId: targetSessionId }));
+        console.log("已發送恢復 AI 指令");
+    }
+}
+
+// ==========================================
+// 🌟 8. 鏡頭與麥克風控制邏輯
+// ==========================================
+let isCamOn = true;
+let isMicOn = true;
+
+function toggleCamera() {
+    if (!localStream) return;
+    const videoTrack = localStream.getVideoTracks()[0]; // 抓取影像軌道
+    if (videoTrack) {
+        isCamOn = !isCamOn;
+        videoTrack.enabled = isCamOn; // 切換影像開關
+        
+        const btn = document.getElementById('toggleCamBtn');
+        if (isCamOn) {
+            btn.innerText = "📹 關閉鏡頭";
+            btn.style.background = "#2c3e50";
+        } else {
+            btn.innerText = "🚫 開啟鏡頭";
+            btn.style.background = "#c0392b"; // 變成紅色警告
+        }
+    }
+}
+
+function toggleMic() {
+    if (!localStream) return;
+    const audioTrack = localStream.getAudioTracks()[0]; // 抓取聲音軌道
+    if (audioTrack) {
+        isMicOn = !isMicOn;
+        audioTrack.enabled = isMicOn; // 切換聲音開關
+        
+        const btn = document.getElementById('toggleMicBtn');
+        if (isMicOn) {
+            btn.innerText = "🎤 關閉麥克風";
+            btn.style.background = "#2c3e50";
+        } else {
+            btn.innerText = "🔇 開啟麥克風";
+            btn.style.background = "#c0392b"; // 變成紅色警告
+        }
+    }
+}
 // 啟動戰情室動畫迴圈
 initGlobalAnimationLoop();

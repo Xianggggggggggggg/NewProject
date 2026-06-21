@@ -24,6 +24,7 @@ function setupWebSocket(server) {
         let currentInterviewer = 'HR';
         let isInterviewEnded = false;
         let isAiSpeaking = false; // 你的防護機制
+        let previousInterviewer = 'HR'
 
         let hrWs = null;
         let managerWs = null;
@@ -340,6 +341,35 @@ function setupWebSocket(server) {
                     return; 
                 }
 
+                // ==========================================
+                // 🌟 新增：戰情室「真人插話」控制指令攔截
+                // ==========================================
+                if (parsedMsg.type === 'pause_ai') {
+                    console.log(`⏸️ [系統] 真人插話，暫停 AI 接收`);
+                    // 記住現在是誰在說話，然後把發言權切換給「真人」
+                    if (currentInterviewer !== 'HANDOVER' && currentInterviewer !== 'HUMAN_INTERVENING') {
+                        previousInterviewer = currentInterviewer;
+                    }
+                    currentInterviewer = 'HUMAN_INTERVENING'; 
+                    
+                    // 叫 AI 立刻閉嘴
+                    const stopMsg = JSON.stringify({ clientContent: { turns: [{ role: "user", parts: [{ text: `[系統強制指令] 真人面試官現在要親自插話。請你立刻停止發言，並進入待機狀態。` }] }], turnComplete: true } });
+                    if (previousInterviewer === 'HR' && hrWs && hrWs.readyState === WebSocket.OPEN) hrWs.send(stopMsg);
+                    if (previousInterviewer === 'MANAGER' && managerWs && managerWs.readyState === WebSocket.OPEN) managerWs.send(stopMsg);
+                    return;
+                }
+
+                if (parsedMsg.type === 'resume_ai') {
+                    console.log(`▶️ [系統] 真人插話結束，恢復 AI`);
+                    currentInterviewer = previousInterviewer; // 把發言權還給剛剛的 AI
+                    
+                    // 告訴 AI 可以繼續了
+                    const resumeMsg = JSON.stringify({ clientContent: { turns: [{ role: "user", parts: [{ text: `[系統指令] 真人面試官已結束插話對話。請你直接繼續你原本的面試流程，提出下一個問題。` }] }], turnComplete: true } });
+                    if (currentInterviewer === 'HR' && hrWs && hrWs.readyState === WebSocket.OPEN) hrWs.send(resumeMsg);
+                    if (currentInterviewer === 'MANAGER' && managerWs && managerWs.readyState === WebSocket.OPEN) managerWs.send(resumeMsg);
+                    return;
+                }
+
                 if (parsedMsg.customType === 'init_interview') {
                     currentSessionId = parsedMsg.sessionId;
                     // 加入動態題數設定 (預設每人問 2 題)
@@ -381,8 +411,8 @@ function setupWebSocket(server) {
                 }
 
                 if (parsedMsg.realtimeInput) {
-                    // 🛡️ 你的防禦機制：AI 說話時、交接中、或面試結束時，忽略前端傳來的麥克風聲音
-                    if (isInterviewEnded || currentInterviewer === 'HANDOVER' || isAiSpeaking) return;
+                    // 🌟 關鍵修改：加上 currentInterviewer === 'HUMAN_INTERVENING'，讓 AI 暫時變成聾子！
+                    if (isInterviewEnded || currentInterviewer === 'HANDOVER' || currentInterviewer === 'HUMAN_INTERVENING' || isAiSpeaking) return;
 
                     if (currentInterviewer === 'HR' && hrWs && hrWs.readyState === WebSocket.OPEN) hrWs.send(msg.toString());
                     else if (currentInterviewer === 'MANAGER' && managerWs && managerWs.readyState === WebSocket.OPEN) managerWs.send(msg.toString());
