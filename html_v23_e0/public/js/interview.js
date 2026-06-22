@@ -247,10 +247,20 @@ function appendTranscript(role, text, ai_role = 'HR') {
     box.scrollTop = box.scrollHeight;
 }
 
+window.isAIPaused = false; // 🌟 新增：全域暫停標記
+
 function stopAllAudio() {
     activeSources.forEach(source => { try { source.stop(); } catch (e) { } });
     activeSources = [];
+    
+    window.audioAnimationQueue = []; // 🌟 核心：徹底清空對嘴動畫的排隊區！
     if (audioContext) nextPlayTime = audioContext.currentTime;
+
+    // 瞬間強制關閉正在動嘴巴的影片
+    const talkTech = document.getElementById('talkVideo_Tech');
+    const talkHR = document.getElementById('talkVideo_HR');
+    if (talkTech) talkTech.classList.remove('active');
+    if (talkHR) talkHR.classList.remove('active');
 }
 
 function initAntiCheatSystem() {
@@ -460,7 +470,7 @@ async function startInterviewAI() {
                 if(hrVideo) hrVideo.style.display = 'block';
             }
 
-                // 2. 收到企業端的連線邀請 (Offer)
+            // 2. 收到企業端的連線邀請 (Offer)
             if (data.type === 'webrtc_offer') {
                 peerConnection = new RTCPeerConnection(rtcConfig);
 
@@ -471,9 +481,26 @@ async function startInterviewAI() {
                     });
                 }
 
+                // 🌟 暴力解鎖真人聲音：強制播放 + 外掛純聲音播放器
                 peerConnection.ontrack = (event) => {
+                    console.log("📡 [WebRTC] 收到真人面試官的影音軌道！");
                     const hrVideo = document.getElementById('remoteHrVideo');
-                    if(hrVideo) hrVideo.srcObject = event.streams[0];
+                    if(hrVideo) {
+                        hrVideo.srcObject = event.streams[0];
+                        hrVideo.muted = false;
+                        hrVideo.volume = 1.0;
+                        hrVideo.play().catch(e => console.warn("影像被阻擋:", e));
+                    }
+
+                    let superAudio = document.getElementById('hrSuperAudio');
+                    if (!superAudio) {
+                        superAudio = document.createElement('audio');
+                        superAudio.id = 'hrSuperAudio';
+                        superAudio.autoplay = true;
+                        document.body.appendChild(superAudio);
+                    }
+                    superAudio.srcObject = event.streams[0];
+                    superAudio.play().catch(e => console.warn("聲音被阻擋:", e));
                 };
 
                 peerConnection.onicecandidate = (event) => {
@@ -486,10 +513,10 @@ async function startInterviewAI() {
                     }
                 };
 
-                // 🌟 關鍵修復：等待名片讀取完成
+                // 等待名片讀取完成
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
 
-                // 🌟 將剛剛卡在門外的 ICE 路徑封包全部放行！
+                // 將剛剛卡在門外的 ICE 路徑封包全部放行！
                 iceCandidateQueue.forEach(c => peerConnection.addIceCandidate(c));
                 iceCandidateQueue = [];
 
@@ -506,7 +533,7 @@ async function startInterviewAI() {
             // 3. 接收企業端的網路路徑
             if (data.type === 'webrtc_ice_candidate') {
                 if (peerConnection) {
-                    // 🌟 關鍵修復：如果名片還沒讀完，先讓路徑封包去排隊
+                    // 如果名片還沒讀完，先讓路徑封包去排隊
                     if (peerConnection.remoteDescription) {
                         await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
                     } else {
@@ -518,6 +545,19 @@ async function startInterviewAI() {
 
             if (data.setupComplete) isSetupComplete = true;
 
+            // ==========================================
+            // 🌟 攔截指令區：處理戰情室的暫停與恢復
+            // ==========================================
+            if (data.customType === 'kill_ai_audio') {
+                console.log("🛑 [系統] 真人插話，強制中斷 AI 語音！");
+                window.isAIPaused = true; // 鎖住接收器
+                stopAllAudio();           // 瞬間殺掉所有庫存聲音
+            }
+            if (data.customType === 'resume_ai_audio') {
+                console.log("▶️ [系統] 恢復 AI 語音接收！");
+                window.isAIPaused = false; // 解鎖接收器
+            }
+
             if (data.customType === 'user_transcript') {
                 appendTranscript('user', data.text);
             }
@@ -528,6 +568,9 @@ async function startInterviewAI() {
             }
 
             if (data.serverContent?.modelTurn?.parts) {
+                // 🛑 核心防護網：只要在暫停中，所有 AI 傳來的殘餘聲音通通丟進垃圾桶！
+                if (window.isAIPaused) return; 
+
                 window.currentAiRole = data.ai_role || window.currentAiRole || '技術主管';
                 
                 let roleStr = window.currentAiRole.toUpperCase();

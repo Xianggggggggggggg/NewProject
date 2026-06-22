@@ -346,6 +346,14 @@ function setupWebSocket(server) {
                 // ==========================================
                 if (parsedMsg.type === 'pause_ai') {
                     console.log(`⏸️ [系統] 真人插話，暫停 AI 接收`);
+                    
+                    // 🌟 終極秒殺指令：廣播給所有人，立刻砍斷 AI 正在播的聲音！
+                    wss.clients.forEach(c => { 
+                        if (c.readyState === WebSocket.OPEN && c.sessionId === parsedMsg.sessionId) {
+                            c.send(JSON.stringify({ customType: 'kill_ai_audio' }));
+                        }
+                    });
+
                     // 記住現在是誰在說話，然後把發言權切換給「真人」
                     if (currentInterviewer !== 'HANDOVER' && currentInterviewer !== 'HUMAN_INTERVENING') {
                         previousInterviewer = currentInterviewer;
@@ -362,11 +370,44 @@ function setupWebSocket(server) {
                 if (parsedMsg.type === 'resume_ai') {
                     console.log(`▶️ [系統] 真人插話結束，恢復 AI`);
                     currentInterviewer = previousInterviewer; // 把發言權還給剛剛的 AI
+
+                    // 告訴前端可以恢復接收 AI 聲音了
+                    wss.clients.forEach(c => { 
+                        if (c.readyState === WebSocket.OPEN && c.sessionId === parsedMsg.sessionId) {
+                            c.send(JSON.stringify({ customType: 'resume_ai_audio' }));
+                        }
+                    });
                     
                     // 告訴 AI 可以繼續了
                     const resumeMsg = JSON.stringify({ clientContent: { turns: [{ role: "user", parts: [{ text: `[系統指令] 真人面試官已結束插話對話。請你直接繼續你原本的面試流程，提出下一個問題。` }] }], turnComplete: true } });
                     if (currentInterviewer === 'HR' && hrWs && hrWs.readyState === WebSocket.OPEN) hrWs.send(resumeMsg);
                     if (currentInterviewer === 'MANAGER' && managerWs && managerWs.readyState === WebSocket.OPEN) managerWs.send(resumeMsg);
+                    return;
+                }
+
+                // ==========================================
+                // 🌟 新增：接收戰情室傳來的「真人語音轉文字」，並廣播到對話紀錄！
+                // ==========================================
+                if (parsedMsg.type === 'hr_human_speech') {
+                    console.log(`🎤 [真人插話文字] ${parsedMsg.text}`);
+                    // 偽裝成 AI 的格式，這樣前端現有的對話框渲染器就能直接把它畫出來
+                    const textMsg = JSON.stringify({ 
+                        customType: 'ai_transcript_final', 
+                        ai_role: '真人HR', 
+                        text: parsedMsg.text 
+                    });
+                    
+                    // 廣播給這個房號裡的所有人 (求職者端跟戰情室都會收到)
+                    wss.clients.forEach(c => {
+                        if (c.readyState === WebSocket.OPEN && c.sessionId === parsedMsg.sessionId) {
+                            c.send(textMsg);
+                        }
+                    });
+                    
+                    // 偷偷把真人的對話紀錄存進資料庫用的陣列裡 (確保最後生報告時有這段紀錄)
+                    if (interviewData && interviewData.transcript) {
+                        interviewData.transcript.push(`【真人HR插話】: ${parsedMsg.text}`);
+                    }
                     return;
                 }
 

@@ -170,6 +170,14 @@ async function startHumanInterview() {
     if (window.audioContext.state === 'suspended') await window.audioContext.resume();
 
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    // 🌟 預設關閉麥克風，避免一進包廂就收到雜音
+    localStream.getAudioTracks()[0].enabled = false;
+    isMicOn = false;
+    const micBtn = document.getElementById('toggleMicBtn');
+    if (micBtn) {
+        micBtn.innerText = "🔇 開啟麥克風";
+        micBtn.style.background = "#c0392b";
+    }
     document.getElementById('localHrVideo').srcObject = localStream;
 
     peerConnection = new RTCPeerConnection(rtcConfig);
@@ -374,20 +382,47 @@ function toggleCamera() {
     }
 }
 
+// ==========================================
+// 🌟 戰情室專屬：語音轉文字引擎與麥克風控制
+// ==========================================
+let hrRecognition = null;
+
+// 初始化 Google 語音辨識
+if ('webkitSpeechRecognition' in window) {
+    hrRecognition = new webkitSpeechRecognition();
+    hrRecognition.continuous = true;
+    hrRecognition.interimResults = false;
+    hrRecognition.lang = 'zh-TW';
+
+    hrRecognition.onresult = (event) => {
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+                const text = event.results[i][0].transcript.trim();
+                if (text && ws && ws.readyState === WebSocket.OPEN) {
+                    // 🌟 你講完話，立刻把文字傳給後端廣播到對話框！
+                    ws.send(JSON.stringify({ type: 'hr_human_speech', text: text, sessionId: targetSessionId }));
+                }
+            }
+        }
+    };
+}
+
 function toggleMic() {
     if (!localStream) return;
-    const audioTrack = localStream.getAudioTracks()[0]; // 抓取聲音軌道
+    const audioTrack = localStream.getAudioTracks()[0];
     if (audioTrack) {
         isMicOn = !isMicOn;
-        audioTrack.enabled = isMicOn; // 切換聲音開關
+        audioTrack.enabled = isMicOn; // 切換 WebRTC 實體麥克風
         
         const btn = document.getElementById('toggleMicBtn');
         if (isMicOn) {
             btn.innerText = "🎤 關閉麥克風";
             btn.style.background = "#2c3e50";
+            if (hrRecognition) hrRecognition.start(); // 🌟 麥克風打開時，開始將 HR 語音轉文字
         } else {
             btn.innerText = "🔇 開啟麥克風";
-            btn.style.background = "#c0392b"; // 變成紅色警告
+            btn.style.background = "#c0392b";
+            if (hrRecognition) hrRecognition.stop();  // 🌟 麥克風關閉時，停止轉文字
         }
     }
 }
