@@ -995,6 +995,9 @@
           throw new Error('AI 報告格式異常（overall_score 缺失），請重新整理頁面再試一次');
         }
 
+        const finalEmotionData = (emotionData && emotionData.data) || emotionData || responseData.emotionData || null;
+        const finalEmotionLogs = (emotionData && emotionData.logs) || emotionData?.emotionLogs || responseData.emotionLogs || [];
+
         renderReport(reportObj, responseData.emotionData || null, responseData.stats || null, responseData.emotionLogs || []);
         showLoading(false);
 

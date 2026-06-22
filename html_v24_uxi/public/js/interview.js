@@ -1,4 +1,4 @@
-// ================= 1. 辨識閾值與數據設定 (你同學的邏輯) =================
+// ================= 1. 辨識閾值與數據設定 =================
 const EAR_THRESHOLD = 0.20;
 const SMILE_THRESHOLD = 1.45;
 const FROWN_THRESHOLD = 0.015;
@@ -27,7 +27,7 @@ window.interviewSessionData = {
     eye_contact_rate: 0.85, confidence_score: 100
 };
 
-// ================= 2. Gemini 語音通訊變數 =================
+// ================= 2. Gemini & WebRTC 通訊變數 =================
 let ws;
 let audioContext;
 let processor;
@@ -37,29 +37,33 @@ let activeSources = [];
 let avatarMesh = null; 
 let aiModelElement = null;
 
+// 🌟 WebRTC 專屬變數 (新增)
+let peerConnection;
+const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
 window.isVisualMonitorRunning = false;
 window.lastSpeakEndTime = 0; 
 
-// 🌟 這裡！把這兩行大腦核心放進最高指揮部，全網頁都認識它們了！
-window.audioAnimationQueue = [];              // 聲音播放排班表 (時間軸佇列)
-window.facialMeshesMap = {};                  // 存放 HR 與技術主管肌肉的地圖
+// 聲音播放排班表 (時間軸佇列)
+window.audioAnimationQueue = [];              
+window.facialMeshesMap = {};                  
 
 let faceMesh = null;
 let cameraUtil = null;
 let isEyeClosed = false;
 
 // 🎬 C. 雙面試官接力賽與對嘴排程狀態
-let currentSpeakerId = null;                  // 記錄當前動嘴模型 ID
-window.currentAiRole = 'HR';                  // 記錄當前回合的角色 (HR 或 技術主管)
-window.currentInterviewStage = 'HR_OPENING';  // 面試階段：HR_OPENING -> MANAGER_TECH -> HR_CLOSING
+let currentSpeakerId = null;                  
+window.currentAiRole = 'HR';                  
+window.currentInterviewStage = 'HR_OPENING';  
 
 let tabSwitchCount = 0;
 let cheatWarningDiv = null;
 let isCheatReporting = false;
 
-// 🌟 D. 對嘴動畫專用計數器 (剛剛漏掉的，補回這裡！)
-let mouthFrameCount = 0;                      // 記錄嘴巴動了幾格
-let currentMouthStrength = 0;                 // 記錄當前嘴巴開合的隨機強度
+// 🌟 D. 對嘴動畫專用計數器
+let mouthFrameCount = 0;                      
+let currentMouthStrength = 0;                 
 
 document.addEventListener('DOMContentLoaded', () => {
     ['aiModel_HR', 'aiModel_Tech'].forEach(id => {
@@ -69,13 +73,13 @@ document.addEventListener('DOMContentLoaded', () => {
         model.addEventListener('load', () => {
             console.log(`📦 [系統] 模型 ${id} 真正載入完成！強制沖刷舊快取...`);
             if (window.facialMeshesMap) {
-                window.facialMeshesMap[id] = []; // 確保重疊時重新掃描活體
+                window.facialMeshesMap[id] = []; 
             }
         });
     });
 });
 
-// ================= 3. 核心計算工具 (你同學的邏輯) =================
+// ================= 3. 核心計算工具 =================
 function calcDistance(p1, p2) { return Math.hypot(p1.x - p2.x, p1.y - p2.y); }
 
 function calculateEAR(landmarks, eyeIndices) {
@@ -95,11 +99,10 @@ function calculateFrown(landmarks) {
     return ((landmarks[61].y + landmarks[291].y) / 2.0) - landmarks[14].y;
 }
 
-// ================= 4. MediaPipe 初始化 (你同學的邏輯) =================
+// ================= 4. MediaPipe 初始化 =================
 function setupFaceMesh() {
     if (faceMesh) return;
 
-    // 🛡️ 1. 安全檢查：檢查瀏覽器有沒有 WebGL (沒顯卡驅動會抓不到)
     function checkWebGLSupport() {
         try {
             const canvas = document.createElement('canvas');
@@ -115,7 +118,6 @@ function setupFaceMesh() {
         return;
     }
 
-    // ⚙️ 2. 初始化 MediaPipe FaceMesh
     try {
         faceMesh = new FaceMesh({
             locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
@@ -134,7 +136,6 @@ function setupFaceMesh() {
 
     let no_face_counter = 0;
 
-    // 🧠 3. 核心邏輯：處理偵測結果
     faceMesh.onResults((results) => {
         if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
             no_face_counter++;
@@ -150,14 +151,12 @@ function setupFaceMesh() {
 
         data.total_frames++;
 
-        // --- 數值計算 ---
         const smile_ratio = calculateSmile(landmarks);
         const frown_score = calculateFrown(landmarks);
         const left_ear = calculateEAR(landmarks, [33, 160, 158, 133, 153, 144]);
         const right_ear = calculateEAR(landmarks, [362, 385, 387, 263, 373, 380]);
         const avg_ear = (left_ear + right_ear) / 2.0;
 
-        // --- 眨眼偵測 ---
         let is_blinking_now = false;
         if (avg_ear < EAR_THRESHOLD) {
             is_blinking_now = true;
@@ -169,7 +168,6 @@ function setupFaceMesh() {
             isEyeClosed = false;
         }
 
-        // --- 情緒分析邏輯 ---
         let current_frame_emotion = "Neutral (平靜)";
         if (smile_ratio > SMILE_THRESHOLD) {
             data.happy_frames++;
@@ -183,7 +181,6 @@ function setupFaceMesh() {
 
         if (is_blinking_now) current_frame_emotion = "Fear (緊張眨眼)";
 
-        // --- 分數更新與回饋 ---
         if (data.total_frames > 0) {
             const base_joy = (data.happy_frames / data.total_frames) * 1.5;
             const base_sad = (data.sad_frames / data.total_frames) * 1.5;
@@ -195,7 +192,6 @@ function setupFaceMesh() {
             let score = 100 - (data.emotion_anxiety * 80) - (data.blink_count * 0.5);
             data.confidence_score = Math.max(0, Math.min(100, Math.round(score)));
 
-            // AI 自動給評語
             if (data.emotion_anxiety > 0.2 || data.blink_count > 30) {
                 data.ai_feedback = "偵測到您在過程中顯露較多緊張，建議深呼吸。";
             } else if (data.emotion_joy > 0.3) {
@@ -205,7 +201,6 @@ function setupFaceMesh() {
             }
         }
 
-        // --- 🌈 炫麗彩色 Log (每 15 幀印一次) ---
         if (data.total_frames % 15 === 0) {
             console.log(`%c[即時偵測] %c${current_frame_emotion} %c| 總分:${data.confidence_score} | EAR:${avg_ear.toFixed(3)}`,
                 "color: #aaa;",
@@ -217,8 +212,7 @@ function setupFaceMesh() {
     });
 }
 
-// ================= 5. Gemini 語音與 UI 處理工具 (🌟 已更新：支援雙面試官 UI) =================
-// 新增 ai_role 參數，用來判斷是 HR 還是主管
+// ================= 5. Gemini 語音與 UI 處理工具 =================
 function appendTranscript(role, text, ai_role = 'HR') {
     if (!text.trim()) return;
     const box = document.getElementById('transcriptBox');
@@ -230,20 +224,19 @@ function appendTranscript(role, text, ai_role = 'HR') {
     msgDiv.style.padding = "10px";
     msgDiv.style.borderRadius = "8px";
 
-    // 🌟 這裡負責把兩個 AI 面試官的泡泡顏色跟名字分開
     if (role === 'ai') {
         if (ai_role === 'HR') {
-            msgDiv.style.backgroundColor = "#f0f0f0"; // HR：灰色泡泡
+            msgDiv.style.backgroundColor = "#f0f0f0"; 
             msgDiv.style.color = "#333";
             msgDiv.innerText = '👩‍💼 人資 (HR)：\n' + text;
         } else {
-            msgDiv.style.backgroundColor = "#ffebee"; // 主管：淡紅色/專業色泡泡
+            msgDiv.style.backgroundColor = "#ffebee"; 
             msgDiv.style.color = "#c62828";
             msgDiv.innerText = '👨‍💻 部門主管：\n' + text;
         }
         msgDiv.style.textAlign = "left";
     } else {
-        msgDiv.style.backgroundColor = "#e8f0fe"; // 應徵者：藍色泡泡
+        msgDiv.style.backgroundColor = "#e8f0fe"; 
         msgDiv.style.color = "#1a73e8";
         msgDiv.style.textAlign = "right";
         msgDiv.innerText = '👤 你：\n' + text;
@@ -257,58 +250,6 @@ function stopAllAudio() {
     activeSources.forEach(source => { try { source.stop(); } catch (e) { } });
     activeSources = [];
     if (audioContext) nextPlayTime = audioContext.currentTime;
-}
-
-function findAvatarMesh() {
-    if (!aiModelElement) aiModelElement = document.getElementById('aiModel');
-    if (!aiModelElement) return;
-
-    // 1. 取得 Shadow Root
-    const shadow = aiModelElement.shadowRoot;
-    if (!shadow) {
-        console.warn("⏳ [診斷] ShadowRoot 尚未生成，0.5秒後重試...");
-        setTimeout(findAvatarMesh, 500);
-        return;
-    }
-
-    // 2. 取得 Canvas
-    const canvas = shadow.querySelector('canvas');
-    if (!canvas) {
-        console.warn("⏳ [診斷] Canvas 尚未生成，0.5秒後重試...");
-        setTimeout(findAvatarMesh, 500);
-        return;
-    }
-
-    // 3. 透過 __threeRenderer 潛入場景 (這是 model-viewer 的後門)
-    const renderer = canvas.__threeRenderer;
-    const scene = renderer?.scene;
-
-    if (!scene) {
-        console.log("⏳ [診斷] Three.js 場景建構中，持續監控...");
-        setTimeout(findAvatarMesh, 500);
-        return;
-    }
-
-    // 4. 地毯式搜索所有零件
-    scene.traverse((obj) => {
-        if (obj.isSkinnedMesh && obj.morphTargetInfluences) {
-            // 只要是有 MorphTarget 的我們都先留著，並優先找臉部
-            if (obj.name.includes("Head") || obj.name.includes("Avatar") || !avatarMesh) {
-                avatarMesh = obj;
-            }
-        }
-    });
-
-    if (avatarMesh) {
-        console.log("✅ [核心] 診斷成功！已鎖定肌肉零件:", avatarMesh.name);
-        console.log("📊 47 號下巴狀態:", avatarMesh.morphTargetInfluences[47] !== undefined ? "可用" : "不存在");
-        
-        // 抓到後手動測試一下，看他會不會張嘴 (測試完會自動縮回去)
-        avatarMesh.morphTargetInfluences[47] = 1.0;
-        setTimeout(() => { avatarMesh.morphTargetInfluences[47] = 0; }, 500);
-    } else {
-        console.error("❌ [錯誤] 找遍了整個模型都找不到 MorphTargets，請檢查 GLB 導出設定！");
-    }
 }
 
 function initAntiCheatSystem() {
@@ -403,7 +344,6 @@ async function playAudio(base64Data, targetId) {
         const now = window.audioContext.currentTime;
         if (nextPlayTime < now) nextPlayTime = now;
 
-        // 🌟【除錯紀錄】排班表登記
         window.audioAnimationQueue.push({
             targetId: targetId,
             startTime: nextPlayTime,
@@ -424,6 +364,13 @@ async function playAudio(base64Data, targetId) {
 async function startInterviewAI() {
     const videoElement = document.getElementById('localVideo');
     const transcriptBox = document.getElementById('transcriptBox');
+
+    // 🌟 將 URL 參數提取拉到最外層，讓 WebRTC 回傳時也能拿到 sessionId
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionId = urlParams.get('session_id');
+    const resumeId = urlParams.get('resume_id');
+    const position = urlParams.get('position');
+    const interviewType = urlParams.get('type') || '行為面試';
 
     console.log("⏳ 正在初始化 FaceMesh 模型...");
     setupFaceMesh();
@@ -481,12 +428,6 @@ async function startInterviewAI() {
             document.getElementById('transcriptBox').innerHTML = '';
             transcriptBox.innerHTML += '<div class="ai-msg" style="padding:10px; background:#f0f0f0; border-radius:8px;">系統：連線成功，正在讀取履歷資料與生成考題...<br><small style="color:#666;">💡 提示：AI 正在分析您的面部表情與語音，請確保鏡頭清晰。</small></div>';
 
-            const urlParams = new URLSearchParams(window.location.search);
-            const sessionId = urlParams.get('session_id');
-            const resumeId = urlParams.get('resume_id');
-            const position = urlParams.get('position');
-            const interviewType = urlParams.get('type') || '行為面試';
-
             if (sessionId && resumeId) {
                 ws.send(JSON.stringify({
                     customType: 'init_interview',
@@ -504,6 +445,65 @@ async function startInterviewAI() {
         ws.onmessage = async (event) => {
             const data = JSON.parse(event.data);
 
+            // ==========================================
+            // 🌟 處理 WebRTC 視訊接收邏輯 (專屬包廂版)
+            // ==========================================
+            
+            // 1. 收到通知：HR 潛入包廂了！
+            if (data.type === 'human_hr_joined') {
+                console.log("🔔 真人 HR 準備連線！切換畫面...");
+                const waitingText = document.getElementById('waiting-text');
+                if(waitingText) waitingText.style.display = 'none';
+                
+                const hrVideo = document.getElementById('remoteHrVideo');
+                if(hrVideo) hrVideo.style.display = 'block';
+            }
+
+            // 2. 收到企業端的連線邀請 (Offer)
+            if (data.type === 'webrtc_offer') {
+                peerConnection = new RTCPeerConnection(rtcConfig);
+
+                const localStream = document.getElementById('localVideo').srcObject;
+                if (localStream) {
+                    localStream.getTracks().forEach(track => {
+                        peerConnection.addTrack(track, localStream);
+                    });
+                }
+
+                peerConnection.ontrack = (event) => {
+                    const hrVideo = document.getElementById('remoteHrVideo');
+                    if(hrVideo) hrVideo.srcObject = event.streams[0];
+                };
+
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        ws.send(JSON.stringify({ 
+                            type: 'webrtc_ice_candidate', 
+                            candidate: event.candidate,
+                            sessionId: sessionId // 🌟 夾帶房號
+                        }));
+                    }
+                };
+
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                
+                ws.send(JSON.stringify({ 
+                    type: 'webrtc_answer', 
+                    answer: answer,
+                    sessionId: sessionId // 🌟 夾帶房號
+                }));
+            }
+
+            // 3. 接收企業端的網路路徑
+            if (data.type === 'webrtc_ice_candidate') {
+                if (peerConnection) {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                }
+            }
+            // ==========================================
+
             if (data.setupComplete) isSetupComplete = true;
 
             if (data.customType === 'user_transcript') {
@@ -515,24 +515,20 @@ async function startInterviewAI() {
                 appendTranscript('ai', data.text, finalRole);
             }
 
-            // 處理後端傳來的語音串流
             if (data.serverContent?.modelTurn?.parts) {
-                // 讀取後端同學在第一步貼上的 ai_role 貼紙
                 window.currentAiRole = data.ai_role || window.currentAiRole || '技術主管';
                 
                 let roleStr = window.currentAiRole.toUpperCase();
                 let targetId = roleStr.includes('HR') ? 'aiModel_HR' : 'aiModel_Tech';
 
-                // 🔍【雷達偵測】檢查網頁上到底看不看的到這個 3D 模型
                 const checkModel = document.getElementById(targetId);
                 if (!checkModel) {
-                    console.error(`❌ [偵測失敗] 程式正試圖讓 "${targetId}" 動嘴巴，但 HTML 裡面找不到這個 ID！請檢查網頁排版！`);
+                    console.error(`❌ [偵測失敗] 找不到 "${targetId}"！`);
                 }
 
                 for (const part of data.serverContent.modelTurn.parts) {
                     if (part.inlineData && part.inlineData.data) {
                         if (audioContext.state === 'suspended') await audioContext.resume();
-                        // 🌟 確保有把 targetId 牢牢傳進去
                         playAudio(part.inlineData.data, targetId); 
                     }
                 }
@@ -544,31 +540,24 @@ async function startInterviewAI() {
             }
         };
 
-        const NOISE_THRESHOLD = 0.015;
-
-        const source = audioContext.createMediaStreamSource(stream);
         processor = audioContext.createScriptProcessor(4096, 1, 1);
         processor.onaudioprocess = (e) => {
-            
-            // 🌟 恢復正常！只看前端唯一的連線變數 ws
             if (ws && ws.readyState === WebSocket.OPEN && isSetupComplete) {
                 const inputData = e.inputBuffer.getChannelData(0);
-                
-                // 1. 不阻擋靜音！把包含安靜的聲音轉碼
                 const pcmData = new Int16Array(inputData.length);
                 for (let i = 0; i < inputData.length; i++) {
                     pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 32767;
                 }
                 const base64Audio = btoa(String.fromCharCode.apply(null, new Uint8Array(pcmData.buffer)));
                 
-                // 2. 統一把聲音丟給後端，讓後端去煩惱要給 HR 還是主管聽
                 ws.send(JSON.stringify({
                     realtimeInput: { audio: { mimeType: "audio/pcm;rate=16000", data: base64Audio } }
                 }));
             }
         };
         
-        source.connect(processor);
+        const sourceNode = audioContext.createMediaStreamSource(stream);
+        sourceNode.connect(processor);
         processor.connect(audioContext.destination);
 
     } catch (err) {
@@ -581,54 +570,44 @@ async function startInterviewAI() {
 }
 
 // ==========================================
-// 🎬 2D 影片版全域大腦計時器 (雙面試官專屬版)
+// 🎬 2D 影片版全域大腦計時器 (雙面試官專屬 - 無縫疊加版)
 // ==========================================
-
-// 1. 設定兩位面試官各自的影片路徑
-const aiVideoSources = {
-    'aiModel_HR': { idle: './women.mp4', talk: './womentalk.mp4' },
-    'aiModel_Tech': { idle: './men.mp4', talk: './mentalk.mp4' }
-};
-
-// 2. 記錄目前的狀態，避免重複刷新
-const aiVideoStates = {
-    'aiModel_HR': 'idle',
-    'aiModel_Tech': 'idle'
-};
 
 function initGlobalAnimationLoop() {
     const runGlobalLoop = () => {
         const ctx = window.audioContext || (typeof audioContext !== 'undefined' ? audioContext : null);
         const now = ctx ? ctx.currentTime : 0;
         
-        // 檢查排班表：目前時間點是哪位面試官在講話？
         const activeTurn = window.audioAnimationQueue.find(item => now >= item.startTime && now <= item.endTime);
         const activeTargetId = activeTurn ? activeTurn.targetId : null;
 
-        // 清理已經播完的舊排班
         window.audioAnimationQueue = window.audioAnimationQueue.filter(item => now <= item.endTime);
 
-        // 控制 2D 影片的 src 切換
-        ['aiModel_HR', 'aiModel_Tech'].forEach(id => {
-            const videoEl = document.getElementById(id);
-            if (!videoEl) return;
+        const talkVideoTech = document.getElementById('talkVideo_Tech');
+        const talkVideoHR = document.getElementById('talkVideo_HR');
 
-            if (id === activeTargetId) {
-                // 🎤 輪到他發言：如果目前不是說話狀態，就切換成他的專屬 talk.mp4
-                if (aiVideoStates[id] !== 'talking') {
-                    videoEl.src = aiVideoSources[id].talk;
-                    videoEl.play().catch(e => console.log("影片播放被阻擋:", e));
-                    aiVideoStates[id] = 'talking';
+        if (talkVideoTech && talkVideoHR) {
+            if (activeTargetId === 'aiModel_Tech') {
+                if (!talkVideoTech.classList.contains('active')) {
+                    talkVideoTech.currentTime = 0; 
+                    talkVideoTech.play().catch(e => console.log(e));
+                    talkVideoTech.classList.add('active'); 
                 }
+                talkVideoHR.classList.remove('active'); 
+
+            } else if (activeTargetId === 'aiModel_HR') {
+                if (!talkVideoHR.classList.contains('active')) {
+                    talkVideoHR.currentTime = 0;
+                    talkVideoHR.play().catch(e => console.log(e));
+                    talkVideoHR.classList.add('active'); 
+                }
+                talkVideoTech.classList.remove('active'); 
+
             } else {
-                // 🤫 沒輪到他：強制切回他的專屬 idle.mp4 待機狀態
-                if (aiVideoStates[id] !== 'idle') {
-                    videoEl.src = aiVideoSources[id].idle;
-                    videoEl.play().catch(e => console.log("影片播放被阻擋:", e));
-                    aiVideoStates[id] = 'idle';
-                }
+                talkVideoTech.classList.remove('active');
+                talkVideoHR.classList.remove('active');
             }
-        });
+        }
 
         requestAnimationFrame(runGlobalLoop);
     };
@@ -636,21 +615,19 @@ function initGlobalAnimationLoop() {
     requestAnimationFrame(runGlobalLoop);
 }
 
-// 啟動全域指揮部
 initGlobalAnimationLoop();
 
 // ================= 7. 結束處理 =================
 async function handleEndInterview() {
     console.log("🚀 正在結束面試並上傳數據...", window.interviewSessionData);
 
-    // 🌟 1. 立刻鎖死按鈕，防止重複點擊
+    // 1. 鎖死按鈕與顯示 Loading 畫面
     const endBtn = document.querySelector('.btn-end');
     if (endBtn) {
         endBtn.disabled = true;
         endBtn.innerText = "處理中...";
     }
 
-    // 🌟 2. 建立並顯示全螢幕的「過場 Loading 畫面」
     const loadingOverlay = document.createElement('div');
     loadingOverlay.id = 'interview-loading-overlay';
     loadingOverlay.style.position = 'fixed';
@@ -671,22 +648,17 @@ async function handleEndInterview() {
         <p style="font-size: 18px; color: #ddd; margin-bottom: 5px;">AI 正在彙整您的面試表現並生成專屬報告...</p>
         <p style="font-size: 14px; color: #888;">(此過程大約需要 10 ~ 20 秒，請勿關閉視窗)</p>
     `;
-    // 加入簡單的呼吸燈動畫
     const style = document.createElement('style');
     style.innerHTML = `@keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.1); } 100% { opacity: 1; transform: scale(1); } }`;
     document.head.appendChild(style);
     document.body.appendChild(loadingOverlay);
 
-    // 🌟 3. 開始執行原本的背景儲存與連線中斷動作
-    if (typeof endInterview === 'function') {
-        console.log("💾 正在更新面試場次狀態...");
-        await endInterview();
-    }
-
+    // 2. 關閉視訊與錄音資源
     if (ws) ws.close();
     if (audioContext) audioContext.close();
     if (cameraUtil) cameraUtil.stop();
 
+    // 3. 開始傳送數據給後端 (最重要的部分！)
     try {
         const urlParams = new URLSearchParams(window.location.search);
         const sessionId = urlParams.get('session_id');
@@ -695,7 +667,6 @@ async function handleEndInterview() {
             console.log("⏳ 正在準備上傳數據...");
             const transcriptText = document.getElementById('transcriptBox')?.innerText || "";
 
-            // 寫入唯一一筆 emotion_log 面試總結
             try {
                 const ed = window.interviewSessionData;
                 let finalEmotion = "平穩"; 
@@ -719,7 +690,6 @@ async function handleEndInterview() {
                 console.error("⚠️ emotion_log 寫入失敗:", logErr);
             }
 
-            // 呼叫 Gemini 生成報告 (這段最久)
             console.log("⏳ 正在請求後端生成 AI 評分報告 (包含表情與誠信查核)...");
             const res = await fetch(`/api/generate-report?session_id=${sessionId}`, {
                 method: 'POST',
@@ -741,10 +711,15 @@ async function handleEndInterview() {
         console.error("❌ 生成報告失敗:", err);
     }
 
-    // 🌟 4. 所有資料都算完後，這時再跳轉頁面
+    // 🌟 4. 所有資料都確定送出後，才執行這兩個「會跳轉」的動作！
+    if (typeof endInterview === 'function') {
+        console.log("💾 正在更新面試場次狀態...");
+        await endInterview();
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
     const sessionId = urlParams.get('session_id');
-    window.location.href = `result.html?session_id=${sessionId}`;
+    window.location.href = `finish.html`;
 }
 
 window.addEventListener('load', () => {
