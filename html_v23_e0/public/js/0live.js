@@ -10,7 +10,22 @@ const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 window.audioAnimationQueue = [];
 window.audioContext = null;
 let activeSources = [];
+
 let nextPlayTime = 0;
+
+// 🌟 新增：戰情室專用的瞬間閉嘴之術
+window.isAIPaused = false;
+function stopAllAudio() {
+    activeSources.forEach(source => { try { source.stop(); } catch (e) { } });
+    activeSources = [];
+    window.audioAnimationQueue = []; // 清空對嘴動畫
+    if (window.audioContext) nextPlayTime = window.audioContext.currentTime;
+
+    const talkTech = document.getElementById('talkVideo_Tech');
+    const talkHR = document.getElementById('talkVideo_HR');
+    if (talkTech) talkTech.classList.remove('active');
+    if (talkHR) talkHR.classList.remove('active');
+}
 
 // ==========================================
 // 1. 頁面載入時的判斷邏輯
@@ -138,6 +153,14 @@ function setupWebSocket() {
         if (data.customType === 'ai_transcript_final') {
             const finalRole = data.ai_role || 'MANAGER';
             appendTranscript('ai', data.text, finalRole);
+        }
+
+        if (data.customType === 'kill_ai_audio') {
+            window.isAIPaused = true;
+            stopAllAudio(); // 讓戰情室的 AI 也瞬間閉嘴
+        }
+        if (data.customType === 'resume_ai_audio') {
+            window.isAIPaused = false;
         }
 
         // 🌟 接收廣播來的 AI 聲音，並觸發戰情室的影片動嘴巴！

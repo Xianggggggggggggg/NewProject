@@ -405,9 +405,7 @@ function setupWebSocket(server) {
                     });
                     
                     // 偷偷把真人的對話紀錄存進資料庫用的陣列裡 (確保最後生報告時有這段紀錄)
-                    if (interviewData && interviewData.transcript) {
-                        interviewData.transcript.push(`【真人HR插話】: ${parsedMsg.text}`);
-                    }
+                    addLog("human_HR", parsedMsg.text, "speech");
                     return;
                 }
 
