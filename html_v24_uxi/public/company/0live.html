@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>真人面試戰情室 - CareerLab</title>
+  
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/0company.css">
+  
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    .live-container { 
+      display: flex; 
+      gap: 20px; 
+      height: 70vh; 
+    }
+    .video-box { 
+      flex: 1; 
+      background: #222; 
+      border-radius: 12px; 
+      position: relative; 
+      overflow: hidden; 
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    video { 
+      width: 100%; 
+      height: 100%; 
+      object-fit: cover; 
+    }
+    .label { 
+      position: absolute; 
+      bottom: 15px; 
+      left: 15px; 
+      background: rgba(0,0,0,0.6); 
+      color: white; 
+      padding: 6px 12px; 
+      border-radius: 6px; 
+      font-size: 14px; 
+    }
+    /* 讓選擇清單的卡片更有質感 */
+    .room-card {
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 12px;
+      padding: 15px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+      transition: transform 0.2s;
+    }
+    .room-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body>
+  <div id="topbar-container"></div>
+  <div id="sidebar-container"></div>
+
+  <div class="section-container active">
+    <h2 style="color: var(--primary-green); margin-bottom: 20px;">🔴 真人面試戰情室</h2>
+    
+    <div id="room-selection-view">
+        <p style="color: var(--text-sub); margin-bottom: 20px; font-size: 16px;">請選擇正在進行中的面試場次以進行潛入：</p>
+        <div id="active-sessions-list" style="display: flex; flex-direction: column; gap: 15px; max-width: 800px;">
+            <div style="color: #888; text-align: center; padding: 30px;">⏳ 正在搜尋進行中的面試...</div>
+        </div>
+    </div>
+
+    <div id="video-room-view" style="display: none;">
+        <div style="text-align: center; margin-bottom: 20px;">
+            <h3 id="current-room-title" style="color: var(--text-main); margin-bottom: 15px;">目前潛入：房號載入中...</h3>
+            <button id="startCallBtn" class="btn-green" style="font-size: 18px; padding: 10px 25px; margin-right: 10px;" onclick="startHumanInterview()">🚀 確認潛入並開啟鏡頭</button>
+            <button class="btn-glass" style="font-size: 16px; padding: 10px 20px;" onclick="window.location.href='0live.html'">🚪 離開包廂</button>
+        </div>
+
+        <div class="live-container glass-panel" style="padding: 15px;">
+            
+            <div class="video-box">
+                <video id="localHrVideo" autoplay muted playsinline style="transform: scaleX(-1);"></video>
+                <div class="label">企業端 (你)</div>
+            </div>
+            
+            <div class="video-box">
+                <video id="remoteUserVideo" autoplay playsinline></video>
+                <div class="label">求職者畫面</div>
+            </div>
+
+        </div>
+    </div>
+  </div>
+
+  <script src="../js/0company.js" defer></script> 
+  <script src="../js/0live.js" defer></script> 
+</body>
+</html>
