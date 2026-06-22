@@ -1,6 +1,12 @@
 // 📁 檔案位置：public/js/0company.js
 // 🌟 完整企業端邏輯整合版 (包含職缺、求職者、公司資訊管理)
 
+// ================= 0. 自訂工具 =================
+window.getVal = function (id) {
+  const el = document.getElementById(id);
+  return el ? el.value : '';
+};
+
 // ================= 1. 共用工具與導覽列 =================
 window.formatSalaryText = function (text) {
   if (!text) return '面議';
@@ -51,19 +57,16 @@ window.navTo = function (sectionId, title) {
   if (overlay) overlay.classList.remove('active');
 };
 
-
 // ================= 2. 職缺管理 (0job.html) =================
 window.openJobModal = function (job = null) {
-  // 1. 切換畫面：隱藏列表區塊，顯示表單區塊
   const listSection = document.getElementById('job-list-section');
   const formSection = document.getElementById('job-form-section');
 
   if (listSection) listSection.style.display = 'none';
   if (formSection) formSection.style.display = 'block';
 
-  window.scrollTo({ top: 0, behavior: 'smooth' }); // 自動滾動到最上方
+  window.scrollTo({ top: 0, behavior: 'smooth' }); 
 
-  // 2. 帶入資料或清空欄位
   if (job && job.job_id) {
     document.getElementById('job-page-title').innerText = '編輯職缺';
     document.getElementById('job-id').value = job.job_id;
@@ -75,7 +78,6 @@ window.openJobModal = function (job = null) {
     document.getElementById('job-req').value = job.requirements || '';
     document.getElementById('job-status').value = job.status || '開啟';
 
-    // 🔽 新增的進階欄位 (請確認您的資料庫欄位名稱，這裡先假設名稱)
     document.getElementById('job-type').value = job.job_type || '全職';
     document.getElementById('job-address').value = job.address || '';
     document.getElementById('job-manage').value = job.manage_resp || '不需負擔管理責任';
@@ -84,7 +86,13 @@ window.openJobModal = function (job = null) {
     document.getElementById('job-startdate').value = job.start_date || '不限';
     document.getElementById('job-edu').value = job.edu_req || '不拘';
 
-    // 🔽 處理「上班時段」拆解 (將 "日班 (09:00~18:00)" 拆回班別與時間)
+    // 🌟 獨立讀取五個新欄位的資料 (對齊真實資料庫名稱)
+    document.getElementById('job-exp').value = job.exp_req || '';
+    document.getElementById('job-major').value = job.major_req || '';
+    document.getElementById('job-lang').value = job.lang_req || '';
+    document.getElementById('job-tools').value = job.tools_req || '';
+    document.getElementById('job-skills').value = job.skills_req || '';
+
     let shiftVal = '日班';
     let rangeVal = '';
     if (job.work_schedule) {
@@ -99,21 +107,16 @@ window.openJobModal = function (job = null) {
     document.getElementById('job-time-shift').value = shiftVal;
     document.getElementById('job-time-range').value = rangeVal;
 
-    // 🔽 處理「福利標籤」與「自訂說明文字」
-    document.querySelectorAll('.welfare-cb').forEach(cb => cb.checked = false); // 先清空所有打勾
+    document.querySelectorAll('.welfare-cb').forEach(cb => cb.checked = false); 
     if (job.benefits) {
-      // 若資料庫內的字串包含該標籤，就將 checkbox 設為打勾
       document.querySelectorAll('.welfare-cb').forEach(cb => {
-        if (job.benefits.includes(cb.value)) {
-          cb.checked = true;
-        }
+        if (job.benefits.includes(cb.value)) cb.checked = true;
       });
-      // 將【其他說明】底下的文字抽出來，放回自訂的 textarea
       let customText = job.benefits;
       if (customText.includes('【其他說明】')) {
         customText = customText.split('【其他說明】')[1].trim();
       } else if (customText.includes('【法定與常見福利】')) {
-        customText = ''; // 如果只有勾選標籤，沒有填寫自訂文字，就留空
+        customText = ''; 
       }
       document.getElementById('job-other').value = customText;
     } else {
@@ -121,7 +124,6 @@ window.openJobModal = function (job = null) {
     }
 
   } else {
-    // ===== 新增職缺：清空並還原所有欄位預設值 =====
     document.getElementById('job-page-title').innerText = '新增職缺';
     document.getElementById('job-id').value = '';
     document.getElementById('job-dept').value = '';
@@ -132,7 +134,13 @@ window.openJobModal = function (job = null) {
     document.getElementById('job-req').value = '';
     document.getElementById('job-status').value = '開啟';
 
-    // 清空或重置進階欄位
+    // 清空五個獨立欄位
+    document.getElementById('job-exp').value = '';
+    document.getElementById('job-major').value = '';
+    document.getElementById('job-lang').value = '';
+    document.getElementById('job-tools').value = '';
+    document.getElementById('job-skills').value = '';
+
     document.getElementById('job-type').value = '全職';
     document.getElementById('job-address').value = '';
     document.getElementById('job-manage').value = '不需負擔管理責任';
@@ -141,23 +149,20 @@ window.openJobModal = function (job = null) {
     document.getElementById('job-startdate').value = '不限';
     document.getElementById('job-edu').value = '不拘';
 
-    // 清空時間與班別
     document.getElementById('job-time-shift').value = '日班';
     document.getElementById('job-time-range').value = '';
 
-    // 清空福利標籤與其他說明
     document.querySelectorAll('.welfare-cb').forEach(cb => cb.checked = false);
     document.getElementById('job-other').value = '';
   }
 };
 
-// 新增這段：關閉表單並返回列表
 window.closeJobForm = function () {
   const listSection = document.getElementById('job-list-section');
   const formSection = document.getElementById('job-form-section');
 
   if (formSection) formSection.style.display = 'none';
-  if (listSection) listSection.style.display = 'flex'; // 恢復彈性盒子排版
+  if (listSection) listSection.style.display = 'flex'; 
 };
 
 window.fetchJobs = async function () {
@@ -170,7 +175,7 @@ window.fetchJobs = async function () {
     const result = await response.json();
 
     if (result.success) {
-      listBody.replaceChildren(); // 乾淨清空畫面
+      listBody.replaceChildren(); 
 
       result.data.forEach(job => {
         const clone = template.content.cloneNode(true);
@@ -210,22 +215,14 @@ window.fetchJobs = async function () {
 window.saveJob = async function () {
   const jobId = document.getElementById('job-id').value;
 
-  // 💡 1. 班別跟時間組合
-  // 1. 分別抓取「班別下拉選單」和「時間輸入框」
-  const shift = getVal('job-time-shift');
-  const timeRange = getVal('job-time-range');
-  // 2. 如果有填時間，就組合成 "日班 (09:00~18:00)"；沒填就只送出 "日班"
+  const shift = window.getVal('job-time-shift');
+  const timeRange = window.getVal('job-time-range');
   const combinedTime = timeRange ? `${shift} (${timeRange})` : shift;
 
-  // 📍 【處理福利制度】
-  // 1. 蒐集所有被打勾的福利標籤
   const checkedWelfareBoxes = document.querySelectorAll('.welfare-cb:checked');
   const welfareTags = Array.from(checkedWelfareBoxes).map(cb => cb.value);
+  const customWelfare = window.getVal('job-other').trim();
 
-  // 2. 抓取文字框的自訂說明
-  const customWelfare = getVal('job-other').trim();
-
-  // 3. 把它們像疊積木一樣組合成一大段包含換行的字串
   let finalBenefits = '';
   if (welfareTags.length > 0) {
     finalBenefits += `【法定與常見福利】${welfareTags.join('、')}\n`;
@@ -234,7 +231,6 @@ window.saveJob = async function () {
     finalBenefits += `【其他說明】\n${customWelfare}`;
   }
 
-  // 💡 4. 取得當下時間的 ISO 字串 (給最後更新時間用)
   const currentTime = new Date().toISOString();
 
   const jobData = {
@@ -243,11 +239,20 @@ window.saveJob = async function () {
     headcount: parseInt(document.getElementById('job-count').value) || 1,
     salary: window.formatSalaryText(document.getElementById('job-salary').value),
     job_description: document.getElementById('job-desc').value,
-    requirements: document.getElementById('job-req').value,
-    work_schedule: combinedTime,
-    benefits: finalBenefits,
-    benefits: document.getElementById('job-other').value,
     status: document.getElementById('job-status').value,
+
+    // 原本的其他條件 (Textarea)
+    requirements: window.getVal('job-req').trim(),
+    
+    // 🌟 五個獨立的資料庫新欄位 (完美對齊你的資料庫名稱)
+    exp_req: window.getVal('job-exp').trim(),
+    major_req: window.getVal('job-major').trim(),
+    lang_req: window.getVal('job-lang').trim(),
+    tools_req: window.getVal('job-tools').trim(),
+    skills_req: window.getVal('job-skills').trim(),
+
+    work_schedule: combinedTime,
+    benefits: finalBenefits, 
 
     job_type: document.getElementById('job-type').value,
     address: document.getElementById('job-address').value,
@@ -255,6 +260,7 @@ window.saveJob = async function () {
     travel_req: document.getElementById('job-travel').value,
     leave_system: document.getElementById('job-leave').value,
     start_date: document.getElementById('job-startdate').value,
+    edu_req: document.getElementById('job-edu').value,
     updated_at: currentTime
   };
 
@@ -279,8 +285,8 @@ window.saveJob = async function () {
     const result = await response.json();
     if (result.success) {
       alert(result.message);
-      window.closeJobModal();
-      await window.fetchJobs(); // 瞬間刷新職缺列表
+      window.closeJobForm(); 
+      await window.fetchJobs(); 
     } else {
       alert("儲存失敗：" + result.error);
     }
@@ -318,7 +324,6 @@ window.closeApplicantListModal = function () {
   if (overlay) overlay.style.display = 'none';
 };
 
-
 // ================= 3. 公司資訊管理 (0profile.html) =================
 window.loadCompanyProfile = async function () {
   try {
@@ -334,15 +339,13 @@ window.loadCompanyProfile = async function () {
 };
 
 window.saveCompanyProfile = async function () {
-  // 取得當下時間
   const currentTime = new Date().toISOString();
-
   const profileData = {
     company_name: document.getElementById('profile-name').value,
     industry: document.getElementById('profile-industry').value,
     contact_email: document.getElementById('profile-email').value,
     company_info: document.getElementById('profile-info').value,
-    updated_at: currentTime // 🌟 順手幫公司資訊也加上最後更新時間
+    updated_at: currentTime 
   };
 
   if (!profileData.company_name) return alert("公司名稱不能為空！");
@@ -359,31 +362,22 @@ window.saveCompanyProfile = async function () {
 };
 
 // ================= 4. 求職者管理 (0applicant.html) =================
-// 全域存儲：應徵者資料映射 (sessionId -> 應徵者完整資料)
 window.applicantDataMap = {};
 
 window.openApplicantDetailModal = async function (sessionId) {
   const overlay = document.getElementById('applicant-detail-overlay');
   if (!overlay) return;
-
   overlay.style.display = 'flex';
 
-  // 載入履歷信息
   const resumeContainer = document.getElementById('detail-resume-content');
   if (resumeContainer) {
     resumeContainer.innerHTML = '<p>載入履歷中...</p>';
-
     try {
-      // 1. 從全域映射取得應徵者的基本信息
       const applicantData = window.applicantDataMap[sessionId];
-
-      // 2. 從後端資料庫取得詳細的履歷信息
       const response = await fetch(`/api/resume?session_id=${sessionId}`);
       if (!response.ok) throw new Error('無法取得履歷資訊');
-
       const resumeData = await response.json();
 
-      // 構建履歷 HTML - 優先使用應徵者列表中的真實數據
       let resumeHtml = `<p><strong>姓名：</strong>${applicantData?.name || resumeData.name || '未知'}</p>`;
       resumeHtml += `<p><strong>應徵職位：</strong>${applicantData?.job_title || resumeData.apply_role || '未指定'}</p>`;
       resumeHtml += `<p><strong>部門：</strong>${applicantData?.department || '未指定'}</p>`;
@@ -397,27 +391,21 @@ window.openApplicantDetailModal = async function (sessionId) {
     }
   }
 
-  // 加載面試報告
   const iframe = document.getElementById('hr-report-iframe');
   const btn = document.getElementById('hr-report-btn');
   const noMsg = document.getElementById('no-report-msg');
 
-  if (sessionId) {
-    // 1. 如果有面試紀錄，就把 hr_report.html 網址塞進去
+  if (sessionId && iframe && btn && noMsg) {
     const reportUrl = `../hr_report.html?session_id=${sessionId}`;
-
     iframe.src = reportUrl;
-    iframe.style.display = 'block'; // 顯示內嵌視窗
-
-    btn.style.display = 'inline-block'; // 顯示新開視窗按鈕
+    iframe.style.display = 'block'; 
+    btn.style.display = 'inline-block'; 
     btn.onclick = (e) => {
       e.preventDefault();
       window.open(reportUrl, '_blank');
     };
-
-    noMsg.style.display = 'none'; // 隱藏「沒有報告」的文字
-  } else {
-    // 2. 如果他還沒面試
+    noMsg.style.display = 'none'; 
+  } else if (iframe && btn && noMsg) {
     iframe.style.display = 'none';
     btn.style.display = 'none';
     noMsg.style.display = 'block';
@@ -430,10 +418,7 @@ window.closeApplicantDetailModal = function () {
 };
 
 window.changeStatusColor = function (selectElement) {
-  // 把所有可能的顏色標籤包含 status-empty 都清掉
   selectElement.classList.remove('status-1', 'status-2', 'status-3', 'status-4', 'status-5', 'status-empty');
-
-  // 重新套用顏色
   if (selectElement.value === '') {
     selectElement.classList.add('status-empty');
   } else {
@@ -491,38 +476,31 @@ window.renderGroupedApplicants = function (data) {
 
     applicants.forEach(app => {
       const clone = template.content.cloneNode(true);
-
-      // 將應徵者資料存儲到全域映射，以便 Modal 打開時使用
       window.applicantDataMap[app.session_id] = app;
 
       const nameText = app.name || '未知';
-      clone.querySelector('.applicant-avatar').textContent = nameText.charAt(0); // 抓名字第一個字塞進大頭貼
+      const avatar = clone.querySelector('.applicant-avatar');
+      if(avatar) avatar.textContent = nameText.charAt(0); 
+      
       clone.querySelector('.applicant-name').textContent = nameText;
       clone.querySelector('.applicant-job').textContent = `應徵職缺：${app.job_title}`;
 
       const selectStatus = clone.querySelector('.status-select');
       selectStatus.dataset.id = app.session_id;
 
-      // 🌟 1. 防呆機制：先抓出 HTML 裡所有合法的 value ('status-1' ~ 'status-5')
       const validValues = Array.from(selectStatus.options).map(opt => opt.value);
-      // 🌟 2. 判斷資料：如果資料庫回傳的狀態是 null, 字串的 "null", 或不在合法清單內
-      // 統一強制轉成空字串 ''，這樣才能精準對應到我們新增的預設選項
       let currentStatus = app.status;
-      if (!validValues.includes(currentStatus)) {
-        currentStatus = '';
-      }
-      // 3. 檢查有沒有 value="" 的選項，沒有就生一個
+      if (!validValues.includes(currentStatus)) currentStatus = '';
+      
       let defaultOption = selectStatus.querySelector('option[value=""]');
       if (!defaultOption) {
         defaultOption = document.createElement('option');
         defaultOption.value = '';
         defaultOption.textContent = '尚未點選狀態';
-        // 🚨 這裡絕對不加 disabled，避免某些瀏覽器把字吃掉
         selectStatus.insertBefore(defaultOption, selectStatus.firstChild);
       }
-      // 4. 正式設定顯示的值
+      
       selectStatus.value = currentStatus;
-      // 5. 更新對應的顏色 CSS
       selectStatus.className = 'status-select';
       if (currentStatus === '') {
         selectStatus.classList.add('status-empty');
@@ -557,27 +535,22 @@ window.updateApplicantStatus = async function (sessionId, newStatus) {
   } catch (error) { console.error('更新錯誤:', error); }
 };
 
-
 // ================= 5. 系統啟動 =================
 window.addEventListener('DOMContentLoaded', () => {
   window.loadCompanyComponents();
 
-  // 📍 偵測：如果人在「職缺管理頁」
   if (document.getElementById('job-list-container')) {
     window.fetchJobs();
   }
 
-  // 📍 偵測：如果人在「公司資訊頁」
   if (document.getElementById('profile-name')) {
     window.loadCompanyProfile();
   }
 
-  // 📍 偵測：如果人在「求職者管理頁」
   const applicantListContainer = document.getElementById('grouped-applicant-list');
   if (applicantListContainer) {
     window.fetchApplicants();
 
-    // 事件委派：狀態下拉選單
     applicantListContainer.addEventListener('change', (e) => {
       if (e.target.classList.contains('status-select')) {
         const sessionId = e.target.dataset.id;
@@ -586,7 +559,6 @@ window.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    // 事件委派：查看報告按鈕
     applicantListContainer.addEventListener('click', (e) => {
       if (e.target.classList.contains('btn-report')) {
         const sessionId = e.target.dataset.id;
@@ -595,7 +567,6 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 求職者管理的 Modal 關閉綁定
   const btnCloseApplicantModal = document.getElementById('btn-close-applicant-modal');
   if (btnCloseApplicantModal) {
     btnCloseApplicantModal.addEventListener('click', window.closeApplicantDetailModal);
