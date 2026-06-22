@@ -220,13 +220,18 @@ function appendTranscript(role, text, ai_role = 'HR') {
 
     const msgDiv = document.createElement('div');
     msgDiv.className = role === 'ai' ? 'ai-msg' : 'user-msg';
-
     msgDiv.style.margin = "10px 0";
     msgDiv.style.padding = "10px";
     msgDiv.style.borderRadius = "8px";
 
     if (role === 'ai') {
-        if (ai_role === 'HR') {
+        // 🌟 新增：專屬真人面試官的超顯眼樣式！
+        if (ai_role === '真人HR') {
+            msgDiv.style.backgroundColor = "#fff3e0"; 
+            msgDiv.style.color = "#d35400";
+            msgDiv.style.border = "1px solid #ffe0b2";
+            msgDiv.innerText = '🕵️ 真人面試官：\n' + text;
+        } else if (ai_role === 'HR') {
             msgDiv.style.backgroundColor = "#f0f0f0"; 
             msgDiv.style.color = "#333";
             msgDiv.innerText = '👩‍💼 人資 (HR)：\n' + text;
@@ -247,13 +252,12 @@ function appendTranscript(role, text, ai_role = 'HR') {
     box.scrollTop = box.scrollHeight;
 }
 
-window.isAIPaused = false; // 🌟 新增：全域暫停標記
+window.isAIPaused = false; // 🌟 宣告全域暫停變數
 
 function stopAllAudio() {
     activeSources.forEach(source => { try { source.stop(); } catch (e) { } });
     activeSources = [];
-    
-    window.audioAnimationQueue = []; // 🌟 核心：徹底清空對嘴動畫的排隊區！
+    window.audioAnimationQueue = []; // 🌟 徹底清空對嘴動畫的排隊區！
     if (audioContext) nextPlayTime = audioContext.currentTime;
 
     // 瞬間強制關閉正在動嘴巴的影片

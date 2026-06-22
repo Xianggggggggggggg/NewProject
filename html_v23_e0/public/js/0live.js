@@ -217,7 +217,6 @@ function appendTranscript(role, text, ai_role = 'HR') {
     const box = document.getElementById('transcriptBox');
     if (!box) return;
 
-    // 清除「等待面試對話開始...」的提示字
     if (box.innerHTML.includes('等待面試對話開始')) {
         box.innerHTML = '<h3 style="margin-top:0; border-bottom: 1px solid #ccc; padding-bottom: 10px;">即時對話監聽紀錄</h3>';
     }
@@ -230,7 +229,13 @@ function appendTranscript(role, text, ai_role = 'HR') {
     msgDiv.style.lineHeight = "1.5";
 
     if (role === 'ai') {
-        if (ai_role.includes('HR')) {
+        // 🌟 新增：戰情室也套用真人面試官專屬樣式！
+        if (ai_role === '真人HR') {
+            msgDiv.style.backgroundColor = "#fff3e0"; 
+            msgDiv.style.color = "#d35400";
+            msgDiv.style.border = "1px solid #ffe0b2";
+            msgDiv.innerText = '🕵️ 真人面試官：\n' + text;
+        } else if (ai_role.includes('HR')) {
             msgDiv.style.backgroundColor = "#f0f0f0"; 
             msgDiv.style.color = "#333";
             msgDiv.innerText = '👩‍💼 人資 (HR)：\n' + text;
