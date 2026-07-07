@@ -395,6 +395,28 @@ function setupWebSocket(server) {
                     if (currentInterviewer === 'MANAGER' && managerWs && managerWs.readyState === WebSocket.OPEN) managerWs.send(resumeMsg);
                     return;
                 }
+                // ==========================================
+                // 🌟 新增：接收應徵者在「暫停期間」講的話 (備用打字員傳來的)
+                // ==========================================
+                if (parsedMsg.customType === 'user_human_speech') {
+                    console.log(`🎤 [應徵者插話文字] ${parsedMsg.text}`);
+                    
+                    const textMsg = JSON.stringify({ 
+                        customType: 'user_transcript', 
+                        text: parsedMsg.text 
+                    });
+                    
+                    // 廣播給所有人 (戰情室跟應徵者的對話框都會出現)
+                    wss.clients.forEach(c => {
+                        if (c.readyState === WebSocket.OPEN && c.sessionId === parsedMsg.sessionId) {
+                            c.send(textMsg);
+                        }
+                    });
+                    
+                    // 存入資料庫紀錄
+                    addLog("user", parsedMsg.text, "speech");
+                    return;
+                }
 
                 // ==========================================
                 // 🌟 新增：接收戰情室傳來的「真人語音轉文字」，並廣播到對話紀錄！

@@ -66,6 +66,36 @@ let isCheatReporting = false;
 let mouthFrameCount = 0;                      
 let currentMouthStrength = 0;                 
 
+// ==========================================
+// 🌟 新增：應徵者本地語音辨識器 (給真人插話時備用的打字員)
+// ==========================================
+let userRecognition = null;
+if ('webkitSpeechRecognition' in window) {
+    userRecognition = new webkitSpeechRecognition();
+    userRecognition.continuous = true;
+    userRecognition.interimResults = false;
+    userRecognition.lang = 'zh-TW';
+
+    userRecognition.onresult = (event) => {
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+                const text = event.results[i][0].transcript.trim();
+                // 收到文字後，立刻傳給後端廣播到對話框
+                if (text && ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ customType: 'user_human_speech', text: text }));
+                }
+            }
+        }
+    };
+    
+    // 如果還在暫停中就不小心斷掉，自動重啟監聽
+    userRecognition.onend = () => {
+        if (window.isAIPaused && userRecognition) {
+            try { userRecognition.start(); } catch(e){}
+        }
+    };
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     ['aiModel_HR', 'aiModel_Tech'].forEach(id => {
         const model = document.getElementById(id);
@@ -561,6 +591,10 @@ async function startInterviewAI() {
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ customType: 'execute_backend_pause' }));
                 }
+                // 🌟 啟動應徵者的備用打字員 (因為 Gemini 暫時聾了)
+                if (userRecognition) {
+                    try { userRecognition.start(); } catch(e) {}
+                }
             }
             if (data.customType === 'resume_ai_audio') {
                 console.log("▶️ [系統] 恢復 AI 語音接收！");
@@ -569,6 +603,10 @@ async function startInterviewAI() {
                 // 🌟 核心神招：命令後端喚醒 Gemini
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ customType: 'execute_backend_resume' }));
+                }
+                // 🌟 關閉備用打字員，把聽寫工作還給 Gemini
+                if (userRecognition) {
+                    try { userRecognition.stop(); } catch(e) {}
                 }
             }
 
