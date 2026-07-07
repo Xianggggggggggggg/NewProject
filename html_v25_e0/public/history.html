@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>求職歷程 - CareerLab</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="topbar-container"></div>
+  <div id="sidebar-container"></div>
+
+  <div class="section-container active" style="align-items: center; padding: 30px;">
+    <div class="history-layout">
+      
+      <!-- 👈 左欄：求職歷程 -->
+      <div class="timeline-section">
+        <div class="section-title">
+          📋 求職歷程
+        </div>
+        <div id="applications-list">
+          <p style="text-align: center; color: #999;">加載中...</p>
+        </div>
+      </div>
+
+      <!-- 👉 右欄：訊息中心 -->
+      <div class="message-section">
+        <div class="section-title">
+          💬 訊息中心
+        </div>
+        <div id="messages-container">
+          <div class="no-selection">👈 選擇左方的求職記錄查看訊息</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+<script src="./js/app.js"></script>
+  
+  <script>
+    let currentApplicantId = null;
+
+    window.addEventListener('DOMContentLoaded', async () => {
+      try {
+        // 1. 去後端問「現在是誰登入？」，取得真實的使用者 ID
+        const authRes = await fetch('/api/auth/user');
+        const authData = await authRes.json();
+        
+        if (!authData.user) {
+          alert('請先登入系統！');
+          window.location.href = 'index.html';
+          return;
+        }
+        
+        currentApplicantId = authData.user.id;
+
+        // 2. 用真正的 ID 去撈歷史資料與聊天紀錄！
+        loadHistorySessions(); 
+        loadChatMessages(currentApplicantId);
+        subscribeRealtimeChat(currentApplicantId);
+        
+      } catch (err) {
+        console.error("驗證身分失敗:", err);
+      }
+    });
+
+    // 1. 載入面試歷史場次 (呼叫妳們後端完美的 /api/history)
+    async function loadHistorySessions() {
+      try {
+        const res = await fetch('/api/history');
+        const data = await res.json();
+        const listEl = document.getElementById('session-list');
+
+        if (!data.history || data.history.length === 0) {
+          listEl.innerHTML = '<p style="color:#999;text-align:center;">目前尚無面試歷史紀錄。</p>';
+          return;
+        }
+
+        listEl.innerHTML = '';
+        data.history.forEach(s => {
+          listEl.innerHTML += `
+            <div class="session-item success">
+              <div class="session-position">🎯 應徵職位：${s.position || '未指定'}</div>
+              <div class="session-time">⏰ 時間：${s.date}</div>
+              <div class="session-status">✅ 狀態：${s.status}</div>
+            </div>
+          `;
+        });
+      } catch (error) {
+        console.error('讀取歷史紀錄失敗:', error);
+      }
+    }
+
+    // 2. 撈取歷史聊天訊息 (呼叫後端 API)
+    async function loadChatMessages(applicantId) {
+      try {
+        const res = await fetch('/api/chat/messages');
+        const data = await res.json();
+        if (data.messages) {
+          const msgBox = document.getElementById('chat-messages');
+          // 清空預設的歡迎詞
+          msgBox.innerHTML = '';
+          data.messages.forEach(m => {
+            const isMe = m.sender_role === 'applicant';
+            msgBox.innerHTML += `
+              <div class="msg-row ${isMe ? 'me' : 'them'}">
+                <div class="msg-bubble">${m.content}</div>
+              </div>
+            `;
+          });
+          msgBox.scrollTop = msgBox.scrollHeight;
+        }
+      } catch (error) {
+        console.error('讀取訊息失敗:', error);
+      }
+    }
+
+    // 3. 求職者傳送新訊息
+    async function sendMsg() {
+      const input = document.getElementById('chat-input');
+      const text = input.value.trim();
+      if (!text || !currentApplicantId) return;
+
+      try {
+        // 直接呼叫 api.js 中寫好的 /api/chat/messages 路由
+        await fetch('/api/chat/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: text })
+        });
+        input.value = '';
+      } catch (error) {
+        console.error('傳送訊息失敗:', error);
+      }
+    }
+
+    // 4. ⚡ 核心黑魔法：訂閱 Supabase Realtime 即時接收 HR 的回覆
+    function subscribeRealtimeChat(applicantId) {
+      if (typeof supabase !== 'undefined') {
+        supabase
+          .channel('room_applicant')
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `applicant_id=eq.${applicantId}` }, 
+          payload => {
+            const m = payload.new;
+            const isMe = m.sender_role === 'applicant';
+            const msgBox = document.getElementById('chat-messages');
+            
+            msgBox.innerHTML += `
+              <div class="msg-row ${isMe ? 'me' : 'them'}">
+                <div class="msg-bubble">${m.content}</div>
+              </div>
+            `;
+            msgBox.scrollTop = msgBox.scrollHeight; // 自動捲到底部
+          })
+          .subscribe();
+      } else {
+        console.warn("未載入 supabase-js，暫時無法使用即時功能");
+      }
+    }
+  </script>
+</body>
+</html>
