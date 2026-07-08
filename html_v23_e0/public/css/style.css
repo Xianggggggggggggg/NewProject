@@ -262,3 +262,255 @@
 .detail-section { margin-bottom: 30px; }
 .detail-section h3 { color: var(--primary-green); margin-bottom: 10px; font-size: 20px; border-bottom: 2px solid rgba(0,0,0,0.05); padding-bottom: 5px; }
 .detail-section p { line-height: 1.8; color: var(--text-main); white-space: pre-line; }
+/* ================= 求職歷程頁面 (history.html) ================= */
+
+.history-layout {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 30px;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.timeline-section, .message-section {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 14px;
+  padding: 25px;
+  border: 1px solid rgba(0,0,0,0.05);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+  max-height: 75vh;
+  overflow-y: auto;
+}
+
+.section-title {
+  font-size: 20px;
+  font-weight: bold;
+  color: var(--primary-green);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 2px solid rgba(121, 152, 81, 0.2);
+  padding-bottom: 15px;
+}
+
+/* ═══════════════ 左欄：求職歷程 ═══════════════ */
+.application-card {
+  border-left: 4px solid var(--primary-green);
+  padding: 15px;
+  margin-bottom: 12px;
+  background: #f9fafb;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.application-card:hover {
+  background: rgba(121, 152, 81, 0.08);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  transform: translateX(8px);
+  border-left-color: #ff9800;
+}
+
+.application-card.active {
+  background: rgba(121, 152, 81, 0.15);
+  border-left-color: #ff9800;
+  box-shadow: 0 6px 20px rgba(121, 152, 81, 0.2);
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+  gap: 10px;
+}
+
+.app-company {
+  font-weight: bold;
+  font-size: 16px;
+  color: var(--text-main);
+  flex: 1;
+}
+
+.app-status {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.status-待面試 {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.status-已面試 {
+  background: #d1ecf1;
+  color: #0c5460;
+}
+
+.status-已錄取 {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-已拒 {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.app-position {
+  font-size: 14px;
+  color: var(--text-sub);
+  margin-bottom: 5px;
+}
+
+.app-date {
+  font-size: 12px;
+  color: #999;
+}
+
+/* ═══════════════ 右欄：訊息中心 ═══════════════ */
+.thread-header {
+  background: linear-gradient(135deg, rgba(121, 152, 81, 0.1), rgba(121, 152, 81, 0.05));
+  padding: 20px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  border-left: 4px solid var(--primary-green);
+}
+
+.thread-company {
+  font-weight: bold;
+  font-size: 16px;
+  color: var(--primary-green);
+  margin-bottom: 5px;
+}
+
+.thread-position {
+  font-size: 13px;
+  color: var(--text-sub);
+}
+
+.message-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+  min-height: 200px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* 單條訊息 */
+.message-item {
+  display: flex;
+  gap: 10px;
+  animation: slideIn 0.3s ease;
+  align-items: flex-end;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.message-item.from-applicant {
+  flex-direction: row-reverse;
+}
+
+.message-bubble {
+  max-width: 70%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.message-item.from-hr .message-bubble {
+  background: #f0f0f0;
+  color: #333;
+  border-left: 3px solid var(--primary-green);
+}
+
+.message-item.from-applicant .message-bubble {
+  background: var(--primary-green);
+  color: white;
+}
+
+.message-item.from-system .message-bubble {
+  background: #fff3cd;
+  color: #856404;
+  border-left: 3px solid #ff9800;
+  width: 100%;
+  text-align: center;
+  font-weight: 600;
+  margin: 15px 0;
+}
+
+.message-time {
+  font-size: 11px;
+  color: #999;
+}
+
+/* 輸入框 */
+.message-input-area {
+  border-top: 1px solid rgba(0,0,0,0.05);
+  padding-top: 15px;
+  display: flex;
+  gap: 10px;
+}
+
+.message-input-area textarea {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(0,0,0,0.1);
+  font-size: 13px;
+  font-family: inherit;
+  resize: none;
+  height: 60px;
+  transition: border-color 0.3s;
+}
+
+.message-input-area textarea:focus {
+  outline: none;
+  border-color: var(--primary-green);
+}
+
+.message-input-area button {
+  padding: 10px 20px;
+  background: var(--primary-green);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 13px;
+  transition: all 0.3s;
+  white-space: nowrap;
+}
+
+.message-input-area button:hover {
+  opacity: 0.9;
+  box-shadow: 0 4px 10px rgba(121, 152, 81, 0.3);
+}
+
+.no-selection {
+  color: #999;
+  text-align: center;
+  padding: 60px 20px;
+  font-size: 16px;
+}
+
+/* 響應式 */
+@media (max-width: 1024px) {
+  .history-layout {
+    grid-template-columns: 1fr;
+  }
+}

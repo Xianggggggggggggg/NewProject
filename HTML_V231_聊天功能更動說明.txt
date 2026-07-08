@@ -1,0 +1,243 @@
+HTML V231 聊天功能更動說明
+
+日期：2026-06-22
+專案位置：C:\Users\user\Desktop\NewProject\html_v23_e0
+
+這次更動目的
+----------------
+原本只有聊天 UI 畫面，沒有真正的前後端功能。
+這次已經改成「面試者可以跟面試官 / HR 像 LINE 一樣互相傳訊息」。
+
+
+一、求職者端更動
+----------------
+檔案：
+C:\Users\user\Desktop\NewProject\html_v23_e0\public\history.html
+
+更動內容：
+1. 將原本單純的歷史紀錄頁，改成「求職歷程 + 訊息中心」。
+2. 左側顯示求職者自己的面試 / 求職歷程。
+3. 右側新增聊天視窗。
+4. 求職者可以輸入訊息並送給 HR。
+5. 聊天氣泡分成自己與對方兩邊，視覺接近 LINE。
+6. 每 3 秒自動刷新訊息，讓雙方能看到新訊息。
+
+
+二、公司 / HR 端更動
+--------------------
+新增檔案：
+C:\Users\user\Desktop\NewProject\html_v23_e0\public\company\0chat.html
+
+更動內容：
+1. 新增 HR 訊息中心頁面。
+2. 左側會列出面試者 / 求職者。
+3. HR 點選一位面試者後，可以看到與該面試者的聊天紀錄。
+4. HR 可以輸入訊息並送給面試者。
+5. HR 端訊息也使用左右氣泡樣式，像 LINE 對話。
+6. 每 3 秒自動刷新訊息。
+
+
+三、求職者前端 JS 更動
+----------------------
+檔案：
+C:\Users\user\Desktop\NewProject\html_v23_e0\public\js\app.js
+
+更動內容：
+1. 新增求職者訊息中心初始化：
+   initApplicantMessageCenter()
+
+2. 新增載入求職歷程：
+   loadApplicantHistorySummary()
+
+3. 新增載入聊天訊息：
+   loadApplicantChatMessages()
+
+4. 新增送出求職者訊息：
+   sendApplicantMessage()
+
+5. 新增聊天訊息渲染：
+   renderChatMessages()
+
+6. 新增 HTML 防護處理，避免訊息內容破壞頁面：
+   escapeHtml()
+
+7. 新增訊息時間格式化：
+   formatChatTime()
+
+8. 在 DOMContentLoaded 裡偵測 history.html 是否有聊天區塊，
+   如果有，就自動啟動求職者聊天功能。
+
+
+四、公司 / HR 前端 JS 更動
+--------------------------
+檔案：
+C:\Users\user\Desktop\NewProject\html_v23_e0\public\js\0company.js
+
+更動內容：
+1. 新增 HR 訊息中心初始化：
+   initHrMessageCenter()
+
+2. 新增載入面試者列表：
+   loadHrChatApplicants()
+
+3. 新增選擇某位面試者：
+   selectHrChatApplicant()
+
+4. 新增載入 HR 與該面試者的聊天訊息：
+   loadHrChatMessages()
+
+5. 新增 HR 送出訊息：
+   sendHrMessage()
+
+6. 新增 HR 聊天訊息渲染：
+   renderHrChatMessages()
+
+7. 新增 HTML 防護處理：
+   escapeCompanyHtml()
+
+8. 新增訊息時間格式化：
+   formatCompanyChatTime()
+
+9. 在 DOMContentLoaded 裡偵測是否進入 0chat.html，
+   如果有，就自動啟動 HR 訊息中心。
+
+
+五、求職者後端 API 更動
+-----------------------
+檔案：
+C:\Users\user\Desktop\NewProject\html_v23_e0\routes\api.js
+
+新增 API：
+1. GET /api/chat/messages
+   功能：
+   讀取目前登入求職者自己的聊天訊息。
+
+2. POST /api/chat/messages
+   功能：
+   求職者送出訊息。
+
+寫入資料：
+sender_role = applicant
+
+注意：
+求職者端會檢查登入狀態，沒有登入會回：
+請先登入
+
+
+六、公司 / HR 後端 API 更動
+---------------------------
+檔案：
+C:\Users\user\Desktop\NewProject\html_v23_e0\routes\company_api.js
+
+新增 API：
+1. GET /api/company/chat/applicants
+   功能：
+   取得所有面試者 / 求職者列表。
+
+2. GET /api/company/chat/:applicant_id/messages
+   功能：
+   取得 HR 與指定面試者的聊天紀錄。
+
+3. POST /api/company/chat/:applicant_id/messages
+   功能：
+   HR 送訊息給指定面試者。
+
+寫入資料：
+sender_role = company
+
+
+七、側邊欄更動
+--------------
+檔案：
+C:\Users\user\Desktop\NewProject\html_v23_e0\public\components\0sidebar.html
+
+更動內容：
+公司端側邊欄新增：
+訊息中心
+
+點擊後會進入：
+company/0chat.html
+
+
+檔案：
+C:\Users\user\Desktop\NewProject\html_v23_e0\public\components\sidebar.html
+
+更動內容：
+求職者端側邊欄原本的歷史紀錄入口文字，改成比較接近聊天用途的文字。
+
+
+八、資料表需求
+--------------
+聊天功能需要 Supabase 有 messages 表。
+
+至少需要欄位：
+1. message_id
+2. applicant_id
+3. sender_role
+4. content
+5. created_at
+
+其中：
+applicant_id 用來判斷是哪一位面試者的對話。
+sender_role 用來判斷訊息是誰送的。
+
+sender_role 會有兩種值：
+applicant：求職者 / 面試者
+company：公司 / HR
+
+
+九、使用方式
+------------
+請先重啟 server。
+
+如果舊 server 還在跑，新的 API 不會生效。
+
+重啟後打開：
+求職者端：
+http://localhost:3001/history.html
+
+公司 / HR 端：
+http://localhost:3001/company/0chat.html
+
+
+十、驗證結果
+------------
+已做語法檢查：
+node --check routes/api.js
+node --check routes/company_api.js
+node --check public/js/app.js
+node --check public/js/0company.js
+
+結果：
+全部通過。
+
+另外測試求職者聊天 API：
+未登入時會正確回覆 401，訊息為「請先登入」。
+
+HR API 在目前 Codex 環境測試時，因為環境無法連到 Supabase，所以回傳 TypeError: fetch failed。
+這代表路由有載入，但資料庫連線在這個環境失敗；在你正常有網路與 Supabase 設定的本機環境，重啟 server 後即可使用。
+
+
+十一、這次有改動的檔案清單
+--------------------------
+C:\Users\user\Desktop\NewProject\html_v23_e0\public\history.html
+C:\Users\user\Desktop\NewProject\html_v23_e0\public\company\0chat.html
+C:\Users\user\Desktop\NewProject\html_v23_e0\public\js\app.js
+C:\Users\user\Desktop\NewProject\html_v23_e0\public\js\0company.js
+C:\Users\user\Desktop\NewProject\html_v23_e0\routes\api.js
+C:\Users\user\Desktop\NewProject\html_v23_e0\routes\company_api.js
+C:\Users\user\Desktop\NewProject\html_v23_e0\public\components\0sidebar.html
+C:\Users\user\Desktop\NewProject\html_v23_e0\public\components\sidebar.html
+C:\Users\user\Desktop\NewProject\html_v23_e0\package-lock.json
+
+
+十二、簡單總結
+--------------
+原本：
+只有聊天 UI，不能真的傳訊息。
+
+現在：
+求職者可以傳訊息給 HR。
+HR 可以選面試者並回覆。
+訊息會寫入 Supabase messages 表。
+雙方頁面會自動刷新，看起來像 LINE 對話。

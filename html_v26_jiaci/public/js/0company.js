@@ -1,8 +1,14 @@
 // 📁 檔案位置：public/js/0company.js
 // 🌟 完整企業端邏輯整合版 (包含職缺、求職者、公司資訊管理)
 
+// ================= 0. 自訂工具 =================
+window.getVal = function (id) {
+  const el = document.getElementById(id);
+  return el ? el.value : '';
+};
+
 // ================= 1. 共用工具與導覽列 =================
-window.formatSalaryText = function(text) {
+window.formatSalaryText = function (text) {
   if (!text) return '面議';
   if (text.includes('面議')) return text;
   let cleanText = text.replace(/\$/g, '').replace(/,/g, '');
@@ -12,7 +18,7 @@ window.formatSalaryText = function(text) {
   });
 };
 
-window.loadCompanyComponents = async function() {
+window.loadCompanyComponents = async function () {
   const sidebarContainer = document.getElementById('sidebar-container');
   if (sidebarContainer) {
     try {
@@ -30,14 +36,14 @@ window.loadCompanyComponents = async function() {
   }
 };
 
-window.toggleMenu = function() {
+window.toggleMenu = function () {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('overlay');
   if (sidebar) sidebar.classList.toggle('open');
   if (overlay) overlay.classList.toggle('active');
 };
 
-window.navTo = function(sectionId, title) {
+window.navTo = function (sectionId, title) {
   document.querySelectorAll('.section-container').forEach(el => el.classList.remove('active'));
   const target = document.getElementById(sectionId);
   if (target) target.classList.add('active');
@@ -51,15 +57,18 @@ window.navTo = function(sectionId, title) {
   if (overlay) overlay.classList.remove('active');
 };
 
-
 // ================= 2. 職缺管理 (0job.html) =================
-window.openJobModal = function(job = null) {
-  const overlay = document.getElementById('job-modal-overlay');
-  if (!overlay) return;
-  overlay.style.display = 'flex';
+window.openJobModal = function (job = null) {
+  const listSection = document.getElementById('job-list-section');
+  const formSection = document.getElementById('job-form-section');
+
+  if (listSection) listSection.style.display = 'none';
+  if (formSection) formSection.style.display = 'block';
+
+  window.scrollTo({ top: 0, behavior: 'smooth' }); 
 
   if (job && job.job_id) {
-    document.getElementById('job-modal-title').innerText = '編輯職缺';
+    document.getElementById('job-page-title').innerText = '編輯職缺';
     document.getElementById('job-id').value = job.job_id;
     document.getElementById('job-dept').value = job.department || '';
     document.getElementById('job-title').value = job.job_title || '';
@@ -67,11 +76,55 @@ window.openJobModal = function(job = null) {
     document.getElementById('job-salary').value = job.salary || '';
     document.getElementById('job-desc').value = job.job_description || '';
     document.getElementById('job-req').value = job.requirements || '';
-    document.getElementById('job-time').value = job.work_schedule || '';
-    document.getElementById('job-other').value = job.benefits || '';
     document.getElementById('job-status').value = job.status || '開啟';
+
+    document.getElementById('job-type').value = job.job_type || '全職';
+    document.getElementById('job-address').value = job.address || '';
+    document.getElementById('job-manage').value = job.manage_resp || '不需負擔管理責任';
+    document.getElementById('job-travel').value = job.travel_req || '無需出差外派';
+    document.getElementById('job-leave').value = job.leave_system || '依公司規定';
+    document.getElementById('job-startdate').value = job.start_date || '不限';
+    document.getElementById('job-edu').value = job.edu_req || '不拘';
+
+    // 🌟 獨立讀取五個新欄位的資料 (對齊真實資料庫名稱)
+    document.getElementById('job-exp').value = job.exp_req || '';
+    document.getElementById('job-major').value = job.major_req || '';
+    document.getElementById('job-lang').value = job.lang_req || '';
+    document.getElementById('job-tools').value = job.tools_req || '';
+    document.getElementById('job-skills').value = job.skills_req || '';
+
+    let shiftVal = '日班';
+    let rangeVal = '';
+    if (job.work_schedule) {
+      if (job.work_schedule.includes('(')) {
+        const parts = job.work_schedule.split('(');
+        shiftVal = parts[0].trim();
+        rangeVal = parts[1].replace(')', '').trim();
+      } else {
+        shiftVal = job.work_schedule.trim();
+      }
+    }
+    document.getElementById('job-time-shift').value = shiftVal;
+    document.getElementById('job-time-range').value = rangeVal;
+
+    document.querySelectorAll('.welfare-cb').forEach(cb => cb.checked = false); 
+    if (job.benefits) {
+      document.querySelectorAll('.welfare-cb').forEach(cb => {
+        if (job.benefits.includes(cb.value)) cb.checked = true;
+      });
+      let customText = job.benefits;
+      if (customText.includes('【其他說明】')) {
+        customText = customText.split('【其他說明】')[1].trim();
+      } else if (customText.includes('【法定與常見福利】')) {
+        customText = ''; 
+      }
+      document.getElementById('job-other').value = customText;
+    } else {
+      document.getElementById('job-other').value = '';
+    }
+
   } else {
-    document.getElementById('job-modal-title').innerText = '新增職缺';
+    document.getElementById('job-page-title').innerText = '新增職缺';
     document.getElementById('job-id').value = '';
     document.getElementById('job-dept').value = '';
     document.getElementById('job-title').value = '';
@@ -79,18 +132,40 @@ window.openJobModal = function(job = null) {
     document.getElementById('job-salary').value = '';
     document.getElementById('job-desc').value = '';
     document.getElementById('job-req').value = '';
-    document.getElementById('job-time').value = '';
-    document.getElementById('job-other').value = '';
     document.getElementById('job-status').value = '開啟';
+
+    // 清空五個獨立欄位
+    document.getElementById('job-exp').value = '';
+    document.getElementById('job-major').value = '';
+    document.getElementById('job-lang').value = '';
+    document.getElementById('job-tools').value = '';
+    document.getElementById('job-skills').value = '';
+
+    document.getElementById('job-type').value = '全職';
+    document.getElementById('job-address').value = '';
+    document.getElementById('job-manage').value = '不需負擔管理責任';
+    document.getElementById('job-travel').value = '無需出差外派';
+    document.getElementById('job-leave').value = '依公司規定';
+    document.getElementById('job-startdate').value = '不限';
+    document.getElementById('job-edu').value = '不拘';
+
+    document.getElementById('job-time-shift').value = '日班';
+    document.getElementById('job-time-range').value = '';
+
+    document.querySelectorAll('.welfare-cb').forEach(cb => cb.checked = false);
+    document.getElementById('job-other').value = '';
   }
 };
 
-window.closeJobModal = function() {
-  const overlay = document.getElementById('job-modal-overlay');
-  if (overlay) overlay.style.display = 'none';
+window.closeJobForm = function () {
+  const listSection = document.getElementById('job-list-section');
+  const formSection = document.getElementById('job-form-section');
+
+  if (formSection) formSection.style.display = 'none';
+  if (listSection) listSection.style.display = 'flex'; 
 };
 
-window.fetchJobs = async function() {
+window.fetchJobs = async function () {
   const listBody = document.getElementById('job-list-body');
   const template = document.getElementById('job-template');
   if (!listBody || !template) return;
@@ -100,7 +175,7 @@ window.fetchJobs = async function() {
     const result = await response.json();
 
     if (result.success) {
-      listBody.replaceChildren(); // 乾淨清空畫面
+      listBody.replaceChildren(); 
 
       result.data.forEach(job => {
         const clone = template.content.cloneNode(true);
@@ -137,18 +212,56 @@ window.fetchJobs = async function() {
   }
 };
 
-window.saveJob = async function() {
+window.saveJob = async function () {
   const jobId = document.getElementById('job-id').value;
+
+  const shift = window.getVal('job-time-shift');
+  const timeRange = window.getVal('job-time-range');
+  const combinedTime = timeRange ? `${shift} (${timeRange})` : shift;
+
+  const checkedWelfareBoxes = document.querySelectorAll('.welfare-cb:checked');
+  const welfareTags = Array.from(checkedWelfareBoxes).map(cb => cb.value);
+  const customWelfare = window.getVal('job-other').trim();
+
+  let finalBenefits = '';
+  if (welfareTags.length > 0) {
+    finalBenefits += `【法定與常見福利】${welfareTags.join('、')}\n`;
+  }
+  if (customWelfare) {
+    finalBenefits += `【其他說明】\n${customWelfare}`;
+  }
+
+  const currentTime = new Date().toISOString();
+
   const jobData = {
     department: document.getElementById('job-dept').value,
     job_title: document.getElementById('job-title').value,
     headcount: parseInt(document.getElementById('job-count').value) || 1,
     salary: window.formatSalaryText(document.getElementById('job-salary').value),
     job_description: document.getElementById('job-desc').value,
-    requirements: document.getElementById('job-req').value,
-    work_schedule: document.getElementById('job-time').value,
-    benefits: document.getElementById('job-other').value,
-    status: document.getElementById('job-status').value
+    status: document.getElementById('job-status').value,
+
+    // 原本的其他條件 (Textarea)
+    requirements: window.getVal('job-req').trim(),
+    
+    // 🌟 五個獨立的資料庫新欄位 (完美對齊你的資料庫名稱)
+    exp_req: window.getVal('job-exp').trim(),
+    major_req: window.getVal('job-major').trim(),
+    lang_req: window.getVal('job-lang').trim(),
+    tools_req: window.getVal('job-tools').trim(),
+    skills_req: window.getVal('job-skills').trim(),
+
+    work_schedule: combinedTime,
+    benefits: finalBenefits, 
+
+    job_type: document.getElementById('job-type').value,
+    address: document.getElementById('job-address').value,
+    manage_resp: document.getElementById('job-manage').value,
+    travel_req: document.getElementById('job-travel').value,
+    leave_system: document.getElementById('job-leave').value,
+    start_date: document.getElementById('job-startdate').value,
+    edu_req: document.getElementById('job-edu').value,
+    updated_at: currentTime
   };
 
   if (!jobData.job_title) return alert("職缺名稱不能為空！");
@@ -172,8 +285,8 @@ window.saveJob = async function() {
     const result = await response.json();
     if (result.success) {
       alert(result.message);
-      window.closeJobModal();
-      await window.fetchJobs(); // 瞬間刷新職缺列表
+      window.closeJobForm(); 
+      await window.fetchJobs(); 
     } else {
       alert("儲存失敗：" + result.error);
     }
@@ -183,7 +296,7 @@ window.saveJob = async function() {
   }
 };
 
-window.deleteJob = async function(jobId) {
+window.deleteJob = async function (jobId) {
   if (!jobId) return;
   if (confirm("確定要刪除這個職缺嗎？刪除後無法復原喔！")) {
     try {
@@ -201,19 +314,18 @@ window.deleteJob = async function(jobId) {
   }
 };
 
-window.openApplicantListModal = function(jobId) {
+window.openApplicantListModal = function (jobId) {
   const overlay = document.getElementById('applicant-list-overlay');
   if (overlay) overlay.style.display = 'flex';
 };
 
-window.closeApplicantListModal = function() {
+window.closeApplicantListModal = function () {
   const overlay = document.getElementById('applicant-list-overlay');
   if (overlay) overlay.style.display = 'none';
 };
 
-
 // ================= 3. 公司資訊管理 (0profile.html) =================
-window.loadCompanyProfile = async function() {
+window.loadCompanyProfile = async function () {
   try {
     const response = await fetch('/api/company/profile');
     const result = await response.json();
@@ -226,14 +338,18 @@ window.loadCompanyProfile = async function() {
   } catch (err) { console.error("讀取失敗:", err); }
 };
 
-window.saveCompanyProfile = async function() {
+window.saveCompanyProfile = async function () {
+  const currentTime = new Date().toISOString();
   const profileData = {
     company_name: document.getElementById('profile-name').value,
     industry: document.getElementById('profile-industry').value,
     contact_email: document.getElementById('profile-email').value,
-    company_info: document.getElementById('profile-info').value
+    company_info: document.getElementById('profile-info').value,
+    updated_at: currentTime 
   };
+
   if (!profileData.company_name) return alert("公司名稱不能為空！");
+
   try {
     const response = await fetch('/api/company/profile', {
       method: 'PUT',
@@ -245,83 +361,64 @@ window.saveCompanyProfile = async function() {
   } catch (err) { console.error("更新失敗:", err); }
 };
 
-
 // ================= 4. 求職者管理 (0applicant.html) =================
-// 全域存儲：應徵者資料映射 (sessionId -> 應徵者完整資料)
 window.applicantDataMap = {};
 
-window.openApplicantDetailModal = async function(sessionId) {
+window.openApplicantDetailModal = async function (sessionId) {
   const overlay = document.getElementById('applicant-detail-overlay');
   if (!overlay) return;
-  
   overlay.style.display = 'flex';
-  
-  // 載入履歷信息
+
   const resumeContainer = document.getElementById('detail-resume-content');
   if (resumeContainer) {
     resumeContainer.innerHTML = '<p>載入履歷中...</p>';
-    
     try {
-      // 1. 從全域映射取得應徵者的基本信息
       const applicantData = window.applicantDataMap[sessionId];
-      
-      // 2. 從後端資料庫取得詳細的履歷信息
       const response = await fetch(`/api/resume?session_id=${sessionId}`);
       if (!response.ok) throw new Error('無法取得履歷資訊');
-      
       const resumeData = await response.json();
-      
-      // 構建履歷 HTML - 優先使用應徵者列表中的真實數據
+
       let resumeHtml = `<p><strong>姓名：</strong>${applicantData?.name || resumeData.name || '未知'}</p>`;
       resumeHtml += `<p><strong>應徵職位：</strong>${applicantData?.job_title || resumeData.apply_role || '未指定'}</p>`;
       resumeHtml += `<p><strong>部門：</strong>${applicantData?.department || '未指定'}</p>`;
       resumeHtml += `<p><strong>學歷：</strong>${resumeData.education || '未提供'}</p>`;
       resumeHtml += `<p><strong>面試日期：</strong>${resumeData.interview_date || '--'}</p>`;
-      
+
       resumeContainer.innerHTML = resumeHtml;
     } catch (error) {
       console.error('履歷載入失敗:', error);
       resumeContainer.innerHTML = '<p style="color:red;">履歷載入失敗，請稍後重試</p>';
     }
   }
-  
-  // 加載面試報告
+
   const iframe = document.getElementById('hr-report-iframe');
   const btn = document.getElementById('hr-report-btn');
   const noMsg = document.getElementById('no-report-msg');
 
-  if (sessionId) {
-    // 1. 如果有面試紀錄，就把 hr_report.html 網址塞進去
+  if (sessionId && iframe && btn && noMsg) {
     const reportUrl = `../hr_report.html?session_id=${sessionId}`;
-    
     iframe.src = reportUrl;
-    iframe.style.display = 'block'; // 顯示內嵌視窗
-    
-    btn.style.display = 'inline-block'; // 顯示新開視窗按鈕
+    iframe.style.display = 'block'; 
+    btn.style.display = 'inline-block'; 
     btn.onclick = (e) => {
       e.preventDefault();
       window.open(reportUrl, '_blank');
     };
-    
-    noMsg.style.display = 'none'; // 隱藏「沒有報告」的文字
-  } else {
-    // 2. 如果他還沒面試
+    noMsg.style.display = 'none'; 
+  } else if (iframe && btn && noMsg) {
     iframe.style.display = 'none';
     btn.style.display = 'none';
     noMsg.style.display = 'block';
   }
 };
 
-window.closeApplicantDetailModal = function() {
+window.closeApplicantDetailModal = function () {
   const overlay = document.getElementById('applicant-detail-overlay');
   if (overlay) overlay.style.display = 'none';
 };
 
-window.changeStatusColor = function(selectElement) {
-  // 把所有可能的顏色標籤包含 status-empty 都清掉
+window.changeStatusColor = function (selectElement) {
   selectElement.classList.remove('status-1', 'status-2', 'status-3', 'status-4', 'status-5', 'status-empty');
-  
-  // 重新套用顏色
   if (selectElement.value === '') {
     selectElement.classList.add('status-empty');
   } else {
@@ -329,7 +426,7 @@ window.changeStatusColor = function(selectElement) {
   }
 };
 
-window.fetchApplicants = async function() {
+window.fetchApplicants = async function () {
   try {
     const response = await fetch('/api/company/applicants');
     const result = await response.json();
@@ -337,12 +434,12 @@ window.fetchApplicants = async function() {
       window.renderGroupedApplicants(result.data);
     } else {
       const container = document.getElementById('grouped-applicant-list');
-      if(container) container.textContent = '載入失敗，請稍後再試。';
+      if (container) container.textContent = '載入失敗，請稍後再試。';
     }
   } catch (error) { console.error('連線錯誤:', error); }
 };
 
-window.renderGroupedApplicants = function(data) {
+window.renderGroupedApplicants = function (data) {
   const container = document.getElementById('grouped-applicant-list');
   if (!container) return;
 
@@ -379,39 +476,32 @@ window.renderGroupedApplicants = function(data) {
 
     applicants.forEach(app => {
       const clone = template.content.cloneNode(true);
-
-      // 將應徵者資料存儲到全域映射，以便 Modal 打開時使用
       window.applicantDataMap[app.session_id] = app;
 
       const nameText = app.name || '未知';
-      clone.querySelector('.applicant-avatar').textContent = nameText.charAt(0); // 抓名字第一個字塞進大頭貼
+      const avatar = clone.querySelector('.applicant-avatar');
+      if(avatar) avatar.textContent = nameText.charAt(0); 
+      
       clone.querySelector('.applicant-name').textContent = nameText;
       clone.querySelector('.applicant-job').textContent = `應徵職缺：${app.job_title}`;
 
       const selectStatus = clone.querySelector('.status-select');
       selectStatus.dataset.id = app.session_id;
 
-      // 🌟 1. 防呆機制：先抓出 HTML 裡所有合法的 value ('status-1' ~ 'status-5')
       const validValues = Array.from(selectStatus.options).map(opt => opt.value);
-      // 🌟 2. 判斷資料：如果資料庫回傳的狀態是 null, 字串的 "null", 或不在合法清單內
-      // 統一強制轉成空字串 ''，這樣才能精準對應到我們新增的預設選項
       let currentStatus = app.status;
-      if (!validValues.includes(currentStatus)) {
-        currentStatus = '';
-      }
-      // 3. 檢查有沒有 value="" 的選項，沒有就生一個
+      if (!validValues.includes(currentStatus)) currentStatus = '';
+      
       let defaultOption = selectStatus.querySelector('option[value=""]');
       if (!defaultOption) {
         defaultOption = document.createElement('option');
         defaultOption.value = '';
         defaultOption.textContent = '尚未點選狀態';
-        // 🚨 這裡絕對不加 disabled，避免某些瀏覽器把字吃掉
         selectStatus.insertBefore(defaultOption, selectStatus.firstChild);
       }
-      // 4. 正式設定顯示的值
+      
       selectStatus.value = currentStatus;
-      // 5. 更新對應的顏色 CSS
-      selectStatus.className = 'status-select'; 
+      selectStatus.className = 'status-select';
       if (currentStatus === '') {
         selectStatus.classList.add('status-empty');
       } else {
@@ -433,7 +523,7 @@ window.renderGroupedApplicants = function(data) {
   }
 };
 
-window.updateApplicantStatus = async function(sessionId, newStatus) {
+window.updateApplicantStatus = async function (sessionId, newStatus) {
   try {
     const response = await fetch(`/api/company/applicants/${sessionId}/status`, {
       method: 'PUT',
@@ -445,196 +535,22 @@ window.updateApplicantStatus = async function(sessionId, newStatus) {
   } catch (error) { console.error('更新錯誤:', error); }
 };
 
-
 // ================= 5. 系統啟動 =================
-let hrSelectedApplicantId = null;
-let hrChatRefreshTimer = null;
-
-function escapeCompanyHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
-function formatCompanyChatTime(value) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleString('zh-TW', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  });
-}
-
-window.initHrMessageCenter = async function() {
-  const input = document.getElementById('hr-chat-input');
-  const sendButton = document.getElementById('hr-chat-send');
-  if (!input || !sendButton) return;
-
-  sendButton.addEventListener('click', window.sendHrMessage);
-  input.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      window.sendHrMessage();
-    }
-  });
-
-  await window.loadHrChatApplicants();
-};
-
-window.loadHrChatApplicants = async function() {
-  const list = document.getElementById('hr-contact-list');
-  if (!list) return;
-
-  try {
-    const response = await fetch('/api/company/chat/applicants');
-    const result = await response.json();
-    if (!result.success) throw new Error(result.error || '載入面試者失敗');
-
-    const applicants = result.data || [];
-    if (!applicants.length) {
-      list.innerHTML = '<div class="empty-state">目前尚無面試者。</div>';
-      return;
-    }
-
-    list.innerHTML = applicants.map(applicant => {
-      const name = applicant.name || '未命名';
-      return `
-        <div class="contact-item" data-applicant-id="${escapeCompanyHtml(applicant.applicant_id)}" data-applicant-name="${escapeCompanyHtml(name)}">
-          <div class="contact-avatar">${escapeCompanyHtml(name.charAt(0))}</div>
-          <div>
-            <div class="contact-name">${escapeCompanyHtml(name)}</div>
-            <div class="contact-email">${escapeCompanyHtml(applicant.email || '')}</div>
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    list.querySelectorAll('.contact-item').forEach(item => {
-      item.addEventListener('click', () => {
-        window.selectHrChatApplicant(item.dataset.applicantId, item.dataset.applicantName);
-      });
-    });
-  } catch (err) {
-    list.innerHTML = `<div class="empty-state" style="color:#c0392b;">${escapeCompanyHtml(err.message)}</div>`;
-  }
-};
-
-window.selectHrChatApplicant = async function(applicantId, applicantName) {
-  hrSelectedApplicantId = applicantId;
-
-  document.querySelectorAll('.contact-item').forEach(item => {
-    item.classList.toggle('active', item.dataset.applicantId === applicantId);
-  });
-
-  document.getElementById('hr-chat-title').textContent = `${applicantName} 的對話`;
-  const input = document.getElementById('hr-chat-input');
-  const sendButton = document.getElementById('hr-chat-send');
-  input.disabled = false;
-  input.placeholder = `傳訊息給 ${applicantName}`;
-  sendButton.disabled = false;
-
-  await window.loadHrChatMessages();
-
-  if (hrChatRefreshTimer) clearInterval(hrChatRefreshTimer);
-  hrChatRefreshTimer = setInterval(window.loadHrChatMessages, 3000);
-};
-
-window.loadHrChatMessages = async function() {
-  const box = document.getElementById('hr-chat-messages');
-  if (!box || !hrSelectedApplicantId) return;
-
-  try {
-    const response = await fetch(`/api/company/chat/${encodeURIComponent(hrSelectedApplicantId)}/messages`);
-    const result = await response.json();
-    if (!result.success) throw new Error(result.error || '載入訊息失敗');
-    window.renderHrChatMessages(result.data || []);
-  } catch (err) {
-    box.innerHTML = `<div class="empty-state" style="color:#c0392b;">${escapeCompanyHtml(err.message)}</div>`;
-  }
-};
-
-window.sendHrMessage = async function() {
-  const input = document.getElementById('hr-chat-input');
-  const sendButton = document.getElementById('hr-chat-send');
-  if (!input || !sendButton || !hrSelectedApplicantId) return;
-
-  const content = input.value.trim();
-  if (!content) return;
-
-  sendButton.disabled = true;
-  try {
-    const response = await fetch(`/api/company/chat/${encodeURIComponent(hrSelectedApplicantId)}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content })
-    });
-    const result = await response.json();
-    if (!result.success) throw new Error(result.error || '訊息送出失敗');
-    input.value = '';
-    await window.loadHrChatMessages();
-  } catch (err) {
-    alert(`訊息送出失敗：${err.message}`);
-  } finally {
-    sendButton.disabled = false;
-    input.focus();
-  }
-};
-
-window.renderHrChatMessages = function(messages) {
-  const box = document.getElementById('hr-chat-messages');
-  if (!box) return;
-
-  if (!messages.length) {
-    box.innerHTML = '<div class="empty-state">目前尚無訊息，可以先向面試者打招呼。</div>';
-    return;
-  }
-
-  const wasNearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
-  box.innerHTML = messages.map(message => {
-    const isMe = message.sender_role === 'company';
-    return `
-      <div class="msg-row ${isMe ? 'me' : 'them'}">
-        <div class="msg-bubble">
-          ${escapeCompanyHtml(message.content)}
-          <span class="msg-time">${escapeCompanyHtml(formatCompanyChatTime(message.created_at))}</span>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  if (wasNearBottom) box.scrollTop = box.scrollHeight;
-};
-
 window.addEventListener('DOMContentLoaded', () => {
   window.loadCompanyComponents();
 
-  // 📍 偵測：如果人在「職缺管理頁」
   if (document.getElementById('job-list-container')) {
     window.fetchJobs();
   }
 
-  // 📍 偵測：如果人在「公司資訊頁」
   if (document.getElementById('profile-name')) {
     window.loadCompanyProfile();
   }
 
-  if (document.getElementById('hr-contact-list')) {
-    window.initHrMessageCenter();
-  }
-
-  // 📍 偵測：如果人在「求職者管理頁」
   const applicantListContainer = document.getElementById('grouped-applicant-list');
   if (applicantListContainer) {
     window.fetchApplicants();
 
-    // 事件委派：狀態下拉選單
     applicantListContainer.addEventListener('change', (e) => {
       if (e.target.classList.contains('status-select')) {
         const sessionId = e.target.dataset.id;
@@ -643,7 +559,6 @@ window.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    // 事件委派：查看報告按鈕
     applicantListContainer.addEventListener('click', (e) => {
       if (e.target.classList.contains('btn-report')) {
         const sessionId = e.target.dataset.id;
@@ -652,7 +567,6 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 求職者管理的 Modal 關閉綁定
   const btnCloseApplicantModal = document.getElementById('btn-close-applicant-modal');
   if (btnCloseApplicantModal) {
     btnCloseApplicantModal.addEventListener('click', window.closeApplicantDetailModal);

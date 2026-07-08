@@ -113,7 +113,8 @@ window.addEventListener('DOMContentLoaded', () => {
   const isProtectedPage = 
     document.getElementById('profile-username') ||      // 這是「帳號設定」頁
     document.getElementById('resume-grid-container') || // 這是「履歷管理」頁
-    document.querySelector('.history-list');            // 這是「歷史紀錄」頁
+    document.querySelector('.history-list') ||          // 這是「歷史紀錄」頁
+    document.getElementById('applicant-chat-messages'); // 這是「求職者訊息中心」頁
 
   // 如果是受保護的頁面，但沒有通行證 (未登入)
   if (isProtectedPage && !token) {
@@ -131,6 +132,7 @@ window.addEventListener('DOMContentLoaded', () => {
   if (document.getElementById('localVideo')) initCamera();
   if (document.getElementById('profile-username')) loadUserProfile();
   if (document.querySelector('.history-list')) loadHistory();
+  if (document.getElementById('applicant-chat-messages')) initApplicantMessageCenter();
   if (document.getElementById('job-grid-container')) renderLobbyJobs();
   if (document.getElementById('job-detail-container')) renderJobDetail();
 
@@ -915,5 +917,132 @@ function formatSalaryText(text) {
   return cleanText.replace(/\d+/g, (match) => {
     return '$' + parseInt(match, 10).toLocaleString('en-US');
   });
+}
+
+let applicantChatRefreshTimer = null;
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function formatChatTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('zh-TW', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+}
+
+async function initApplicantMessageCenter() {
+  const input = document.getElementById('applicant-chat-input');
+  const sendButton = document.getElementById('applicant-chat-send');
+  if (!input || !sendButton) return;
+
+  await Promise.all([
+    loadApplicantHistorySummary(),
+    loadApplicantChatMessages()
+  ]);
+
+  sendButton.addEventListener('click', sendApplicantMessage);
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      sendApplicantMessage();
+    }
+  });
+
+  if (applicantChatRefreshTimer) clearInterval(applicantChatRefreshTimer);
+  applicantChatRefreshTimer = setInterval(loadApplicantChatMessages, 3000);
+}
+
+async function loadApplicantHistorySummary() {
+  const list = document.getElementById('session-list');
+  if (!list) return;
+
+  try {
+    const result = await apiGet('/api/history');
+    const history = result.history || [];
+
+    if (!history.length) {
+      list.innerHTML = '<div class="empty-state">目前尚無面試紀錄。</div>';
+      return;
+    }
+
+    list.innerHTML = history.map(item => `
+      <div class="session-item">
+        <div class="session-position">${escapeHtml(item.position || '未命名職缺')}</div>
+        <div class="session-meta">日期：${escapeHtml(item.date || '-')}</div>
+        <div class="session-meta">狀態：${escapeHtml(item.status || '-')}</div>
+        <div class="session-meta">評分：${escapeHtml(item.score || 'N/A')}</div>
+      </div>
+    `).join('');
+  } catch (err) {
+    list.innerHTML = `<div class="empty-state" style="color:#c0392b;">載入面試紀錄失敗：${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function loadApplicantChatMessages() {
+  const box = document.getElementById('applicant-chat-messages');
+  if (!box) return;
+
+  try {
+    const result = await apiGet('/api/chat/messages');
+    renderChatMessages(box, result.messages || [], 'applicant');
+  } catch (err) {
+    box.innerHTML = `<div class="empty-state" style="color:#c0392b;">載入訊息失敗：${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function sendApplicantMessage() {
+  const input = document.getElementById('applicant-chat-input');
+  const sendButton = document.getElementById('applicant-chat-send');
+  if (!input || !sendButton) return;
+
+  const content = input.value.trim();
+  if (!content) return;
+
+  sendButton.disabled = true;
+  try {
+    await apiPost('/api/chat/messages', { content });
+    input.value = '';
+    await loadApplicantChatMessages();
+  } catch (err) {
+    alert(`訊息送出失敗：${err.message}`);
+  } finally {
+    sendButton.disabled = false;
+    input.focus();
+  }
+}
+
+function renderChatMessages(box, messages, myRole) {
+  if (!messages.length) {
+    box.innerHTML = '<div class="empty-state">目前尚無訊息，輸入第一則訊息開始對話。</div>';
+    return;
+  }
+
+  const wasNearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  box.innerHTML = messages.map(message => {
+    const isMe = message.sender_role === myRole;
+    return `
+      <div class="msg-row ${isMe ? 'me' : 'them'}">
+        <div class="msg-bubble">
+          ${escapeHtml(message.content)}
+          <span class="msg-time">${escapeHtml(formatChatTime(message.created_at))}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  if (wasNearBottom) box.scrollTop = box.scrollHeight;
 }
 

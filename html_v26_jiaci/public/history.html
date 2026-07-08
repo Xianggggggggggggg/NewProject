@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>求職歷程 - CareerLab</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="topbar-container"></div>
+  <div id="sidebar-container"></div>
+
+  <div class="section-container active" style="align-items: center; padding: 30px;">
+    <div class="history-layout">
+      
+      <!-- 👈 左欄：求職歷程 -->
+      <div class="timeline-section">
+        <div class="section-title">
+          📋 求職歷程
+        </div>
+        <div id="session-list">
+          <p style="text-align: center; color: #999;">加載中...</p>
+        </div>
+      </div>
+
+      <!-- 👉 右欄：訊息中心 -->
+      <div class="message-section">
+        <div class="section-title">
+          💬 訊息中心
+        </div>
+        <div class="chat-room-header">
+          <div id="chat-position-title">請選擇職位</div>
+        </div>
+        <div id="messages-container">
+          <div id="chat-messages" class="no-selection">👈 點選左方職位後，這裡會顯示該職位的對話紀錄</div>
+
+          <div class="chat-input-area" style="display:flex;gap:8px;margin-top:auto;padding-top:12px;">
+            <input id="chat-input" type="text" placeholder="輸入訊息..." style="flex:1;padding:8px;border-radius:6px;border:1px solid #ddd;" onkeydown="if(event.key==='Enter'){ sendMsg(); }" />
+            <button id="chat-send" onclick="sendMsg()" style="padding:8px 12px;border-radius:6px;border:none;background:#2d8cff;color:#fff;">傳送</button>
+          </div>
+
+          <div style="display:flex;gap:8px;margin-top:12px;">
+            <label style="flex:1;display:flex;align-items:center;justify-content:center;padding:10px;border:2px dashed #dbeafe;border-radius:6px;background:#f0f9ff;cursor:pointer;">
+              <input id="file-upload" type="file" multiple style="display:none;" onchange="handleFileUpload(event)" />
+              <span style="color:#2d8cff;font-weight:500;">📎 上傳檔案</span>
+            </label>
+          </div>
+
+          <div id="file-list" style="margin-top:8px;"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+<script src="./js/app.js"></script>
+  
+  <script>
+    let currentApplicantId = null;
+    let selectedPosition = null;
+    let chatHistoryByPosition = {};
+    const CHAT_STORAGE_PREFIX = 'careerlab_history_chat_messages_';
+
+    window.addEventListener('DOMContentLoaded', async () => {
+      try {
+        // 1. 去後端問「現在是誰登入？」，取得真實的使用者 ID
+        const authRes = await fetch('/api/auth/user');
+        const authData = await authRes.json();
+        
+        if (!authData.user) {
+          alert('請先登入系統！');
+          window.location.href = 'index.html';
+          return;
+        }
+        
+        currentApplicantId = authData.user.id;
+
+        // 2. 用真正的 ID 去撈歷史資料與聊天紀錄！
+        loadHistorySessions(); 
+        loadChatMessages(currentApplicantId);
+        subscribeRealtimeChat(currentApplicantId);
+        
+      } catch (err) {
+        console.error("驗證身分失敗:", err);
+      }
+    });
+
+    // 1. 載入面試歷史場次，依職位分組，點擊後再展開歷史紀錄
+    async function loadHistorySessions() {
+      try {
+        const res = await fetch('/api/history');
+        const data = await res.json();
+        const listEl = document.getElementById('session-list');
+
+        if (!data.history || data.history.length === 0) {
+          listEl.innerHTML = '<p style="color:#999;text-align:center;">目前尚無面試歷史紀錄。</p>';
+          return;
+        }
+
+        const grouped = new Map();
+        data.history.forEach(s => {
+          const key = (s.position || '未指定').trim() || '未指定';
+          if (!grouped.has(key)) {
+            grouped.set(key, []);
+          }
+          grouped.get(key).push(s);
+        });
+
+        listEl.innerHTML = '';
+        const positions = Array.from(grouped.keys());
+        positions.forEach((position, index) => {
+          const sessions = grouped.get(position);
+          const wrapper = document.createElement('details');
+          wrapper.className = 'history-group';
+          wrapper.style.marginBottom = '14px';
+          wrapper.style.border = '1px solid #dbeafe';
+          wrapper.style.borderRadius = '12px';
+          wrapper.style.padding = '10px 12px';
+          wrapper.style.background = '#f8fbff';
+          wrapper.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)';
+          wrapper.style.overflow = 'hidden';
+          wrapper.style.transition = 'all 0.2s ease';
+          wrapper.innerHTML = `
+            <summary style="cursor:pointer; list-style:none; display:block; padding:0; margin:0;" onclick="selectPosition('${escapeHtml(position)}')">
+              <div class="session-item success" style="margin-bottom: 8px; border: none; background: transparent; box-shadow: none; padding: 0; width: 100%; box-sizing: border-box;">
+                <div class="session-position">🎯 職位：${escapeHtml(position)}</div>
+                <div class="session-time">📌 共 ${sessions.length} 次歷史紀錄</div>
+              </div>
+            </summary>
+            <div style="margin-left: 8px; margin-top: 6px; border-top: 1px solid #dbeafe; padding-top: 8px; box-sizing: border-box;">
+              ${sessions.map(s => `
+                <div class="session-item" style="margin-bottom: 8px; background:#f9fafb; box-sizing: border-box; width: 100%;">
+                  <div class="session-position">🗓️ ${escapeHtml(s.date)}</div>
+                  <div class="session-time">⏰ 狀態：${escapeHtml(s.status)}</div>
+                  <div class="session-status">📊 評分：${escapeHtml(s.score || 'N/A')}</div>
+                </div>
+              `).join('')}
+            </div>
+          `;
+          listEl.appendChild(wrapper);
+          if (index === 0) {
+            selectPosition(position);
+          }
+        });
+      } catch (error) {
+        console.error('讀取歷史紀錄失敗:', error);
+      }
+    }
+
+    function shouldDisplayMessage(message) {
+      const content = String(message?.content || '').trim();
+      return content !== '我是何珈琦';
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function getChatStorageKey(position) {
+      return `${CHAT_STORAGE_PREFIX}${encodeURIComponent(position || 'default')}`;
+    }
+
+    function saveChatHistoryToStorage(position) {
+      try {
+        localStorage.setItem(getChatStorageKey(position), JSON.stringify(chatHistoryByPosition[position] || []));
+      } catch (error) {
+        console.warn('儲存聊天紀錄失敗:', error);
+      }
+    }
+
+    function loadChatHistoryFromStorage(position) {
+      try {
+        const saved = localStorage.getItem(getChatStorageKey(position));
+        if (!saved) return [];
+        return JSON.parse(saved);
+      } catch (error) {
+        console.warn('讀取聊天紀錄失敗:', error);
+        return [];
+      }
+    }
+
+    function selectPosition(position) {
+      if (!position) return;
+      selectedPosition = position;
+      if (!chatHistoryByPosition[position]) {
+        chatHistoryByPosition[position] = loadChatHistoryFromStorage(position);
+      }
+      renderChatHistory();
+    }
+
+    function addChatMessageToHistory(message, position = selectedPosition) {
+      if (!message || !shouldDisplayMessage(message) || !position) return;
+
+      if (!chatHistoryByPosition[position]) {
+        chatHistoryByPosition[position] = [];
+      }
+
+      const exists = chatHistoryByPosition[position].some(item => {
+        if (item.id && message.id && item.id === message.id) return true;
+        return item.content === message.content && item.sender_role === message.sender_role && item.created_at === message.created_at;
+      });
+
+      if (!exists) {
+        chatHistoryByPosition[position].push(message);
+        saveChatHistoryToStorage(position);
+      }
+    }
+
+    function renderChatHistory() {
+      const msgBox = document.getElementById('chat-messages');
+      const titleEl = document.getElementById('chat-position-title');
+
+      if (!selectedPosition) {
+        titleEl.textContent = '請選擇職位';
+        msgBox.innerHTML = '<div class="no-selection">👈 點選左方職位後，這裡會顯示該職位的對話紀錄</div>';
+        return;
+      }
+
+      titleEl.textContent = `💬 ${selectedPosition}`;
+      const messages = (chatHistoryByPosition[selectedPosition] || []).filter(shouldDisplayMessage);
+      msgBox.innerHTML = '';
+      messages.forEach(m => {
+        const isMe = m.sender_role === 'applicant';
+        msgBox.innerHTML += `
+          <div class="msg-row ${isMe ? 'me' : 'them'}">
+            <div class="msg-bubble">${m.content}</div>
+          </div>
+        `;
+      });
+      msgBox.scrollTop = msgBox.scrollHeight;
+    }
+
+    // 2. 撈取歷史聊天訊息 (呼叫後端 API)
+    async function loadChatMessages(applicantId) {
+      try {
+        const res = await fetch('/api/chat/messages');
+        const data = await res.json();
+        const serverMessages = Array.isArray(data.messages) ? data.messages : [];
+
+        if (serverMessages.length > 0 && !selectedPosition) {
+          const fallbackPosition = '一般職位';
+          chatHistoryByPosition[fallbackPosition] = serverMessages.filter(shouldDisplayMessage);
+          saveChatHistoryToStorage(fallbackPosition);
+          selectPosition(fallbackPosition);
+        } else {
+          renderChatHistory();
+        }
+      } catch (error) {
+        console.error('讀取訊息失敗:', error);
+        renderChatHistory();
+      }
+    }
+
+    // 3. 處理檔案上傳
+    async function handleFileUpload(event) {
+      const files = event.target.files;
+      if (!files || files.length === 0) return;
+
+      const fileListEl = document.getElementById('file-list');
+      let html = '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:6px;padding:8px;">';
+      
+      Array.from(files).forEach((file, index) => {
+        const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+        html += `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:${index < files.length - 1 ? '1px solid #f0f0f0' : 'none'};">
+            <span style="color:#333;font-size:13px;">📄 ${file.name}</span>
+            <span style="color:#999;font-size:12px;">${sizeMB}MB</span>
+          </div>
+        `;
+      });
+
+      html += '</div>';
+      fileListEl.innerHTML = html;
+
+      // 這裡可以加上後續上傳到後端的邏輯
+      console.log('已選擇檔案:', Array.from(files).map(f => f.name).join(', '));
+    }
+
+    // 3. 求職者傳送新訊息
+    async function sendMsg() {
+      const input = document.getElementById('chat-input');
+      const text = input.value.trim();
+      if (!text || !currentApplicantId) return;
+
+      try {
+        const response = await fetch('/api/chat/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: text })
+        });
+        const result = await response.json();
+
+        const localMessage = {
+          id: result?.message?.id || Date.now(),
+          applicant_id: currentApplicantId,
+          sender_role: 'applicant',
+          content: text,
+          created_at: new Date().toISOString()
+        };
+
+        addChatMessageToHistory(localMessage, selectedPosition || '一般職位');
+        renderChatHistory();
+        input.value = '';
+      } catch (error) {
+        console.error('傳送訊息失敗:', error);
+      }
+    }
+
+    // 4. ⚡ 核心黑魔法：訂閱 Supabase Realtime 即時接收 HR 的回覆
+    function subscribeRealtimeChat(applicantId) {
+      if (typeof supabase !== 'undefined') {
+        supabase
+          .channel('room_applicant')
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `applicant_id=eq.${applicantId}` }, 
+          payload => {
+            const m = payload.new;
+            if (!shouldDisplayMessage(m)) return;
+
+            addChatMessageToHistory(m, selectedPosition || '一般職位');
+            renderChatHistory();
+          })
+          .subscribe();
+      } else {
+        console.warn("未載入 supabase-js，暫時無法使用即時功能");
+      }
+    }
+  </script>
+</body>
+</html>
