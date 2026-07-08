@@ -183,7 +183,7 @@ function setupWebSocket() {
 async function startHumanInterview() {
     document.getElementById('startCallBtn').disabled = true;
     document.getElementById('startCallBtn').innerText = "連線中...";
-    document.getElementById('interventionBtn').style.display = 'inline-block';
+
     document.getElementById('toggleCamBtn').style.display = 'inline-block';
     document.getElementById('toggleMicBtn').style.display = 'inline-block';
     // 啟動音效大腦 (瀏覽器規定必須在按鈕點擊時啟動)
