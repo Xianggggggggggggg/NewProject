@@ -180,58 +180,63 @@ function setupWebSocket() {
 // ==========================================
 // 4. HR 按下「確認潛入並開啟鏡頭」
 // ==========================================
+
 async function startHumanInterview() {
-    document.getElementById('startCallBtn').disabled = true;
-    document.getElementById('startCallBtn').innerText = "連線中...";
+    try {
+        document.getElementById('startCallBtn').disabled = true;
+        document.getElementById('startCallBtn').innerText = "連線中...";
 
-    document.getElementById('toggleCamBtn').style.display = 'inline-block';
-    document.getElementById('toggleMicBtn').style.display = 'inline-block';
-    // 啟動音效大腦 (瀏覽器規定必須在按鈕點擊時啟動)
-    if (!window.audioContext) {
-        window.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-    }
-    if (window.audioContext.state === 'suspended') await window.audioContext.resume();
-
-    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    // 🌟 預設關閉麥克風，避免一進包廂就收到雜音
-    localStream.getAudioTracks()[0].enabled = false;
-    isMicOn = false;
-    const micBtn = document.getElementById('toggleMicBtn');
-    if (micBtn) {
-        micBtn.innerText = "🔇 開啟麥克風";
-        micBtn.style.background = "#c0392b";
-    }
-    document.getElementById('localHrVideo').srcObject = localStream;
-
-    peerConnection = new RTCPeerConnection(rtcConfig);
-
-    localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-    });
-
-    peerConnection.ontrack = (event) => {
-        document.getElementById('remoteUserVideo').srcObject = event.streams[0];
-
-        startAutoVoiceDetection(localStream, event.streams[0]);
-    };
-
-    peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-            // 發送的所有訊號都要夾帶 sessionId
-            ws.send(JSON.stringify({ 
-                type: 'webrtc_ice_candidate', 
-                candidate: event.candidate,
-                sessionId: targetSessionId 
-            }));
+        // 啟動音效大腦 (瀏覽器規定必須在按鈕點擊時啟動)
+        if (!window.audioContext) {
+            window.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
         }
-    };
+        if (window.audioContext.state === 'suspended') await window.audioContext.resume();
 
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-    
-    // 發送潛入通知與視訊邀請
-    ws.send(JSON.stringify({ type: 'human_hr_joined', sessionId: targetSessionId })); 
-    ws.send(JSON.stringify({ type: 'webrtc_offer', offer: offer, sessionId: targetSessionId }));
+        // 請求相機與麥克風權限
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        
+        // 預設關閉麥克風防干擾
+        localStream.getAudioTracks()[0].enabled = false;
+        isMicOn = false;
+        
+        document.getElementById('localHrVideo').srcObject = localStream;
+
+        peerConnection = new RTCPeerConnection(rtcConfig);
+
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+        });
+
+        peerConnection.ontrack = (event) => {
+            document.getElementById('remoteUserVideo').srcObject = event.streams[0];
+            // 🌟 啟動聲控雷達！
+            startAutoVoiceDetection(localStream, event.streams[0]);
+        };
+
+        peerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+                ws.send(JSON.stringify({ 
+                    type: 'webrtc_ice_candidate', 
+                    candidate: event.candidate,
+                    sessionId: targetSessionId 
+                }));
+            }
+        };
+
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        
+        // 發送潛入通知與視訊邀請
+        ws.send(JSON.stringify({ type: 'human_hr_joined', sessionId: targetSessionId })); 
+        ws.send(JSON.stringify({ type: 'webrtc_offer', offer: offer, sessionId: targetSessionId }));
+        
+    } catch (error) {
+        // 🛑 如果相機壞掉或有任何錯誤，會直接彈出視窗告訴你，絕對不會卡死！
+        console.error("連線發生錯誤:", error);
+        alert("無法連線！原因：" + error.message);
+        document.getElementById('startCallBtn').disabled = false;
+        document.getElementById('startCallBtn').innerText = "🚀 重新連線";
+    }
 }
 
 // ==========================================
