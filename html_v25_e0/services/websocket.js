@@ -210,7 +210,14 @@ function setupWebSocket(server) {
                     isAiSpeaking = true; // 你的防護機制
                     const audioData = JSON.parse(data.toString());
                     audioData.ai_role = role;
-                    clientWs.send(JSON.stringify(audioData));
+                    
+                    // 🌟 關鍵修復：把 AI 的聲音包裹廣播給「這個房間裡的所有人」(包含戰情室)！
+                    const audioMsg = JSON.stringify(audioData);
+                    wss.clients.forEach(c => { 
+                        if (c.readyState === WebSocket.OPEN && c.sessionId === currentSessionId) {
+                            c.send(audioMsg);
+                        }
+                    });
                 }
 
                 if (response.serverContent?.turnComplete) {
