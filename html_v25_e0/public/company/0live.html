@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>真人戰情室 - CareerLab</title>
+  
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+      /* 完全複製 interview.html 的超美排版 */
+      .interview-layout-multi {
+          display: flex; gap: 20px; max-width: 1600px; width: 95%; margin: 0 auto; height: 85vh; 
+      }
+      .video-grid {
+          flex: 3; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 20px; 
+      }
+      .video-card {
+          background-color: #2c2c2c; border-radius: 12px; overflow: hidden; position: relative;
+          display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      }
+      .video-label {
+          position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.6);
+          color: white; padding: 4px 10px; border-radius: 6px; font-size: 14px; z-index: 10;
+      }
+      .ai-video {
+          position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;
+          transform: scale(1.15); transform-origin: center center; transition: opacity 0.15s;
+      }
+      .ai-talk-video { opacity: 0; z-index: 2; }
+      .ai-talk-video.active { opacity: 1; }
+      #ai-interviewer-1 { background-color: #72acc5; }
+      #ai-interviewer-2 { background-color: #9c9a9a; }
+      .transcript-area {
+          flex: 1; background: rgba(255, 255, 255, 0.9); border-radius: 12px; padding: 20px;
+          overflow-y: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      }
+
+      /* 選擇房間的清單樣式 */
+      .room-card {
+        background: rgba(255, 255, 255, 0.9); border-radius: 12px; padding: 15px 20px;
+        display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 15px;
+      }
+  </style>
+</head>
+
+<body>
+  <div id="topbar-container"></div>
+
+  <div class="section-container active" style="padding-top: 30px;">
+    
+    <div id="room-selection-view">
+        <h2 style="color: var(--primary-green); margin-bottom: 20px;">🔴 真人面試戰情室 大廳</h2>
+        <p style="color: var(--text-sub); margin-bottom: 20px; font-size: 16px;">請選擇正在進行中的面試場次以進行潛入：</p>
+        <div id="active-sessions-list" style="max-width: 800px;">
+            <div style="color: #888; text-align: center; padding: 30px;">⏳ 正在搜尋進行中的面試...</div>
+        </div>
+    </div>
+
+    <div id="video-room-view" style="display: none;">
+        
+        <div style="text-align: center; margin-bottom: 15px;">
+            <span id="current-room-title" style="font-size: 18px; font-weight: bold; margin-right: 20px;">潛入房間：載入中...</span>
+            <button id="startCallBtn" class="btn-green" style="font-size: 16px; padding: 8px 20px; border-radius: 20px;" onclick="startHumanInterview()">🚀 開啟鏡頭並連線</button>
+            <button id="interventionBtn" class="btn-action" style="background:#e67e22; color:white; font-size: 16px; padding: 8px 20px; border-radius: 20px; margin-left: 10px; display: none;" onclick="toggleIntervention()">✋ 暫停 AI (我要插話)</button>
+            <button id="toggleCamBtn" class="btn-action" style="background:#2c3e50; color:white; font-size: 16px; padding: 8px 20px; border-radius: 20px; margin-left: 10px; display: none;" onclick="toggleCamera()">📹 關閉鏡頭</button>
+            <button id="toggleMicBtn" class="btn-action" style="background:#2c3e50; color:white; font-size: 16px; padding: 8px 20px; border-radius: 20px; margin-left: 10px; display: none;" onclick="toggleMic()">🎤 關閉麥克風</button>
+            <button class="btn-glass" style="font-size: 16px; padding: 8px 20px; border-radius: 20px; margin-left: 10px;" onclick="window.location.href='0live.html'">🚪 離開</button>
+        </div>
+
+        <div class="interview-layout-multi">
+            <div class="video-grid">
+                
+                <div class="video-card" id="ai-interviewer-1">
+                    <video class="ai-video" src="../men.mp4" autoplay loop muted playsinline></video>
+                    <video class="ai-video ai-talk-video" id="talkVideo_Tech" src="../mentalk.mp4" loop muted playsinline></video>
+                    <div class="video-label">AI 面試官 (技術主管)</div>
+                </div>
+
+                <div class="video-card" id="ai-interviewer-2">
+                    <video class="ai-video" src="../women.mp4" autoplay loop muted playsinline></video>
+                    <video class="ai-video ai-talk-video" id="talkVideo_HR" src="../womentalk.mp4" loop muted playsinline></video>
+                    <div class="video-label">AI 面試官 (HR)</div>
+                </div>
+
+                <div class="video-card">
+                    <video id="localHrVideo" autoplay muted playsinline style="width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1);"></video>
+                    <div class="video-label">戰情室 (你的畫面)</div>
+                </div>
+
+                <div class="video-card">
+                    <video id="remoteUserVideo" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>
+                    <div class="video-label">應徵者 (即時畫面)</div>
+                </div>
+
+            </div>
+
+            <div class="transcript-area glass-panel" id="transcriptBox">
+                <h3 style="margin-top:0; border-bottom: 1px solid #ccc; padding-bottom: 10px;">即時對話監聽紀錄</h3>
+                <div style="color:#888; font-size: 14px; margin-top: 10px;">等待面試對話開始...</div>
+            </div>
+
+        </div>
+    </div>
+
+  </div>
+
+  <script src="../js/0live.js" defer></script> 
+</body>
+</html>
