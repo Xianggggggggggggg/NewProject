@@ -507,22 +507,31 @@ if ('webkitSpeechRecognition' in window) {
     };
 }
 
+// ==========================================
+// 🌟 純粹的麥克風硬體開關 (不綁定任何 AI 指令)
+// ==========================================
 function toggleMic() {
     if (!localStream) return;
     const audioTrack = localStream.getAudioTracks()[0];
     if (audioTrack) {
         isMicOn = !isMicOn;
-        audioTrack.enabled = isMicOn; // 切換 WebRTC 實體麥克風
+        audioTrack.enabled = isMicOn; // 純粹地切換 WebRTC 實體麥克風
         
         const btn = document.getElementById('toggleMicBtn');
         if (isMicOn) {
             btn.innerText = "🎤 關閉麥克風";
-            btn.style.background = "#2c3e50";
-            if (hrRecognition) hrRecognition.start(); // 🌟 麥克風打開時，開始將 HR 語音轉文字
+            btn.style.background = "#2c3e50"; // 深藍色
+            
+            // 麥克風打開時，啟動語音轉文字 (給對話框用的)
+            if (hrRecognition) hrRecognition.start(); 
+            console.log("🎤 麥克風已開啟 (聲控雷達開始監聽您的聲音)");
         } else {
             btn.innerText = "🔇 開啟麥克風";
-            btn.style.background = "#c0392b";
-            if (hrRecognition) hrRecognition.stop();  // 🌟 麥克風關閉時，停止轉文字
+            btn.style.background = "#c0392b"; // 紅色
+            
+            // 麥克風關閉時，停止語音轉文字
+            if (hrRecognition) hrRecognition.stop();  
+            console.log("🔇 麥克風已靜音 (聲控雷達聽不到您的聲音)");
         }
     }
 }
