@@ -82,7 +82,7 @@ if ('webkitSpeechRecognition' in window) {
                 const text = event.results[i][0].transcript.trim();
                 // 收到文字後，立刻傳給後端廣播到對話框
                 if (text && ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ customType: 'user_human_speech', text: text }));
+                    ws.send(JSON.stringify({ customType: 'user_human_speech', text: text, sessionId: window.currentSessionId }));
                 }
             }
         }
@@ -416,6 +416,8 @@ async function startInterviewAI() {
     const resumeId = urlParams.get('resume_id');
     const position = urlParams.get('position');
     const interviewType = urlParams.get('type') || '行為面試';
+
+    window.currentSessionId = sessionId;
 
     console.log("⏳ 正在初始化 FaceMesh 模型...");
     setupFaceMesh();
