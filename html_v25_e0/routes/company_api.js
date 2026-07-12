@@ -128,13 +128,90 @@ router.get('/applicants', async (req, res) => {
 router.put('/applicants/:session_id/status', async (req, res) => {
     try {
         const { status } = req.body;
-        if (!status) return res.status(400).json({ success: false, error: '缺少狀態參數' });
+        const sessionId = req.params.session_id;
 
-        const { error } = await supabaseAdmin
+        // 🌟 修正 1：把 if (!status) 改成明確檢查 undefined，允許空字串 ("") 通過
+        if (status === undefined) return res.status(400).json({ success: false, error: '缺少狀態參數' });
+
+        // 1. 先更新資料庫中的狀態
+        const { error: updateError } = await supabaseAdmin
             .from('interview_sessions')
             .update({ status })
-            .eq('session_id', req.params.session_id);
+            .eq('session_id', sessionId);
+        if (updateError) throw updateError;
 
+        // 🌟 修正 2：如果狀態是空的 (尚未點選狀態)，就不發送自動通知信
+        if (status !== '') {
+            // 2. 撈取該求職者的 ID 與職缺名稱
+            const { data: sessionData, error: sessionError } = await supabaseAdmin
+                .from('interview_sessions')
+                .select('applicant_id, jobs(job_title)')
+                .eq('session_id', sessionId)
+                .single();
+
+            if (!sessionError && sessionData && sessionData.applicant_id) {
+                let autoMessage = '';
+                if (status === 'status-1') autoMessage = '【系統自動通知】您好，我們已收到您的面試資料，目前正在進行初步審核中。';
+                else if (status === 'status-2') autoMessage = '【系統自動通知】您好，我們誠摯地邀請您參與後續的面試階段，將有專人與您聯繫安排時間。';
+                else if (status === 'status-3') autoMessage = '【系統自動通知】恭喜您錄取！我們非常期待您的加入，後續將寄送正式的報到通知信。';
+                else if (status === 'status-4') autoMessage = '【系統自動通知】感謝您參與本次面試。經過審慎評估，目前暫無合適職缺，您的資料已存入人才庫。';
+                else if (status === 'status-5') autoMessage = '【系統自動通知】您好，您的狀態已更新為「備取」，若有職缺釋出將第一時間與您聯繫。';
+                else autoMessage = `【系統自動通知】您應徵的「${sessionData.jobs?.job_title || '該職缺'}」狀態已更新。`;
+
+                // 寫入訊息表
+                await supabaseAdmin.from('messages').insert([{
+                    applicant_id: sessionData.applicant_id,
+                    sender_role: 'company',
+                    content: autoMessage
+                }]);
+            }
+        }
+
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ==========================================
+// 💬 HR 訊息中心專用 API
+// ==========================================
+
+// 1. 取得左側聯絡人列表 (🌟 修正：改成 applicants)
+router.get('/chat/contacts', async (req, res) => {
+    try {
+        const { data, error } = await supabaseAdmin.from('applicants').select('applicant_id, name');
+        if (error) throw error;
+        res.json({ success: true, data });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 2. 取得與特定求職者的歷史對話 (🌟 修正：改成 messages)
+router.get('/chat/:applicant_id', async (req, res) => {
+    try {
+        const { data, error } = await supabaseAdmin
+            .from('messages')
+            .select('*')
+            .eq('applicant_id', req.params.applicant_id)
+            .order('created_at', { ascending: true });
+        if (error) throw error;
+        res.json({ success: true, data });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 3. HR 手動傳送新訊息 (🌟 修正：改成 messages)
+router.post('/chat/:applicant_id', async (req, res) => {
+    try {
+        const { content } = req.body;
+        const { error } = await supabaseAdmin.from('messages').insert([{
+            applicant_id: req.params.applicant_id,
+            sender_role: 'company',
+            content: content
+        }]);
         if (error) throw error;
         res.json({ success: true });
     } catch (err) {

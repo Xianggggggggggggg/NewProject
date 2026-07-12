@@ -1,5 +1,5 @@
 // 📁 檔案位置：public/js/0company.js
-// 🌟 完整企業端邏輯整合版 (包含職缺、求職者、公司資訊管理)
+// 🌟 完整企業端邏輯整合版 (包含職缺、求職者、公司資訊管理、HR 訊息中心)
 
 // ================= 0. 自訂工具 =================
 window.getVal = function (id) {
@@ -86,7 +86,6 @@ window.openJobModal = function (job = null) {
     document.getElementById('job-startdate').value = job.start_date || '不限';
     document.getElementById('job-edu').value = job.edu_req || '不拘';
 
-    // 🌟 獨立讀取五個新欄位的資料 (對齊真實資料庫名稱)
     document.getElementById('job-exp').value = job.exp_req || '';
     document.getElementById('job-major').value = job.major_req || '';
     document.getElementById('job-lang').value = job.lang_req || '';
@@ -134,7 +133,6 @@ window.openJobModal = function (job = null) {
     document.getElementById('job-req').value = '';
     document.getElementById('job-status').value = '開啟';
 
-    // 清空五個獨立欄位
     document.getElementById('job-exp').value = '';
     document.getElementById('job-major').value = '';
     document.getElementById('job-lang').value = '';
@@ -241,10 +239,7 @@ window.saveJob = async function () {
     job_description: document.getElementById('job-desc').value,
     status: document.getElementById('job-status').value,
 
-    // 原本的其他條件 (Textarea)
     requirements: window.getVal('job-req').trim(),
-    
-    // 🌟 五個獨立的資料庫新欄位 (完美對齊你的資料庫名稱)
     exp_req: window.getVal('job-exp').trim(),
     major_req: window.getVal('job-major').trim(),
     lang_req: window.getVal('job-lang').trim(),
@@ -373,21 +368,42 @@ window.openApplicantDetailModal = async function (sessionId) {
   if (resumeContainer) {
     resumeContainer.innerHTML = '<p>載入履歷中...</p>';
     try {
-      const applicantData = window.applicantDataMap[sessionId];
+      const applicantData = window.applicantDataMap[sessionId] || {};
+      
       const response = await fetch(`/api/resume?session_id=${sessionId}`);
       if (!response.ok) throw new Error('無法取得履歷資訊');
+      
       const resumeData = await response.json();
 
-      let resumeHtml = `<p><strong>姓名：</strong>${applicantData?.name || resumeData.name || '未知'}</p>`;
-      resumeHtml += `<p><strong>應徵職位：</strong>${applicantData?.job_title || resumeData.apply_role || '未指定'}</p>`;
-      resumeHtml += `<p><strong>部門：</strong>${applicantData?.department || '未指定'}</p>`;
-      resumeHtml += `<p><strong>學歷：</strong>${resumeData.education || '未提供'}</p>`;
-      resumeHtml += `<p><strong>面試日期：</strong>${resumeData.interview_date || '--'}</p>`;
+      // 🌟 1. 動態更新標題為「姓名 - 詳細資料」
+      const applicantName = applicantData.name || resumeData.name || '未知應徵者';
+      const titleEl = document.querySelector('.modal-main-title');
+      if (titleEl) {
+        titleEl.textContent = `${applicantName} - 詳細資料`;
+      }
 
-      resumeContainer.innerHTML = resumeHtml;
+      // 🌟 2. 注入精美的排版 HTML
+      resumeContainer.innerHTML = `
+        <div class="preview-item">
+          <div class="preview-label">最高學歷</div>
+          <div class="preview-value">${resumeData.education || '未提供'}</div>
+        </div>
+        <div class="preview-item">
+          <div class="preview-label">語言能力</div>
+          <div class="preview-value">${resumeData.language_skills || '未提供'}</div>
+        </div>
+        <div class="preview-item">
+          <div class="preview-label">工作經歷</div>
+          <div class="preview-value">${resumeData.work_experience || '目前無相關經歷紀錄'}</div>
+        </div>
+        <div class="preview-item">
+          <div class="preview-label">自傳</div>
+          <div class="preview-value">${resumeData.autobiography || '未提供自傳'}</div>
+        </div>
+      `;
     } catch (error) {
       console.error('履歷載入失敗:', error);
-      resumeContainer.innerHTML = '<p style="color:red;">履歷載入失敗，請稍後重試</p>';
+      resumeContainer.innerHTML = '<p style="color:red; padding: 15px;">履歷載入失敗，請稍後重試</p>';
     }
   }
 
@@ -570,5 +586,122 @@ window.addEventListener('DOMContentLoaded', () => {
   const btnCloseApplicantModal = document.getElementById('btn-close-applicant-modal');
   if (btnCloseApplicantModal) {
     btnCloseApplicantModal.addEventListener('click', window.closeApplicantDetailModal);
+  }
+
+  // 🌟 你的聊天室邏輯完整放在這裡 🌟
+  const chatContactList = document.getElementById('hr-contact-list');
+  if (chatContactList) {
+    let currentChatApplicantId = null;
+
+    // 1. 載入左側聯絡人
+    async function loadContacts() {
+      try {
+        const res = await fetch('/api/company/chat/contacts');
+        const result = await res.json();
+        if (result.success && result.data.length > 0) {
+          chatContactList.innerHTML = ''; 
+          result.data.forEach(user => {
+            const div = document.createElement('div');
+            // 簡單的聯絡人樣式
+            div.style.padding = '15px';
+            div.style.borderBottom = '1px solid #eee';
+            div.style.cursor = 'pointer';
+            div.style.fontWeight = 'bold';
+            div.textContent = `👤 ${user.name}`;
+            
+            // 點擊後打開該人員的聊天室
+            div.onclick = () => {
+              currentChatApplicantId = user.applicant_id;
+              document.getElementById('hr-chat-title').textContent = `與 ${user.name} 對話中`;
+              document.getElementById('hr-chat-input').disabled = false;
+              document.getElementById('hr-chat-send').disabled = false;
+              loadMessages();
+            };
+            chatContactList.appendChild(div);
+          });
+        } else {
+          chatContactList.innerHTML = '<div class="empty-state">尚無聯絡人</div>';
+        }
+      } catch (e) { console.error('載入聯絡人失敗', e); }
+    }
+
+    // 2. 載入右側對話紀錄
+    async function loadMessages() {
+      if (!currentChatApplicantId) return;
+      const messageBox = document.getElementById('hr-chat-messages');
+      messageBox.innerHTML = '<div class="empty-state">載入訊息中...</div>';
+      
+      try {
+        const res = await fetch(`/api/company/chat/${currentChatApplicantId}`);
+        const result = await res.json();
+        if (result.success) {
+          messageBox.innerHTML = '';
+          if (result.data.length === 0) {
+            messageBox.innerHTML = '<div class="empty-state">尚無對話紀錄。</div>';
+            return;
+          }
+          result.data.forEach(msg => {
+            const msgDiv = document.createElement('div');
+            const isCompany = msg.sender_role === 'company';
+            
+            // 判斷是公司傳的 (靠右, 綠色) 還是求職者傳的 (靠左, 灰色)
+            msgDiv.style.textAlign = isCompany ? 'right' : 'left';
+            msgDiv.style.margin = '10px 0';
+            
+            const bubble = document.createElement('span');
+            bubble.textContent = msg.content;
+            bubble.style.display = 'inline-block';
+            bubble.style.padding = '10px 15px';
+            bubble.style.borderRadius = '15px';
+            bubble.style.backgroundColor = isCompany ? '#E8F5E9' : '#F5F5F5';
+            bubble.style.color = isCompany ? '#2E7D32' : '#333';
+            bubble.style.maxWidth = '70%';
+            bubble.style.wordBreak = 'break-word';
+
+            msgDiv.appendChild(bubble);
+            messageBox.appendChild(msgDiv);
+          });
+          // 自動捲動到最新訊息
+          messageBox.scrollTop = messageBox.scrollHeight;
+        }
+      } catch (e) { console.error('載入訊息失敗', e); }
+    }
+
+    // 3. HR 手動傳送訊息功能
+    const sendBtn = document.getElementById('hr-chat-send');
+    const inputField = document.getElementById('hr-chat-input');
+
+    async function sendMessage() {
+      const text = inputField.value.trim();
+      if (!text || !currentChatApplicantId) return;
+
+      inputField.value = ''; // 清空輸入框
+      inputField.disabled = true;
+      sendBtn.disabled = true;
+
+      try {
+        const res = await fetch(`/api/company/chat/${currentChatApplicantId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: text })
+        });
+        const result = await res.json();
+        if (result.success) await loadMessages(); // 傳送成功後重新載入對話
+      } catch (e) {
+        console.error('傳送失敗', e);
+      } finally {
+        inputField.disabled = false;
+        sendBtn.disabled = false;
+        inputField.focus();
+      }
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+    inputField.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendMessage(); // 支援按 Enter 傳送
+    });
+
+    // 剛進網頁時，載入左側名單
+    loadContacts();
   }
 });

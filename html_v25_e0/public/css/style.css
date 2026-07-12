@@ -1,11 +1,11 @@
-/* ================= 1.顏色與玻璃參數變數 (切換為亮色系 Light Mode) ================= */
+ /* ================= 1.顏色與玻璃參數變數 (切換為亮色系 Light Mode) ================= */
 :root {
  --primary-green: #799851;
  --primary-green-hover: #799851;
  --glass-bg: rgba(255, 255, 255, 0.65);
  --glass-border: rgba(255, 255, 255, 1);
  --glass-shadow: rgba(0, 0, 0, 0.05);
- --glass-blur: blur(16px);
+ --glass-blur: blur(16px); 
  --text-main: #2d3436;
  --text-sub: #636e72;
 }
@@ -296,9 +296,7 @@ button {
  padding: 20px;
  min-height: 100px;
 }
-
-
-/* ================= 3.履歷區塊樣式 (修改長度與寬度) ================= */
+/* ================= 3.resume.html 履歷區塊樣式 (修改長度與寬度) ================= */
 .resume-grid {
  display: flex;
  flex-wrap: wrap;
@@ -646,8 +644,7 @@ textarea.reg-input {
  transform: translateY(-8px);
 }
 
-/* 7.個人資料設定 */
-/* ================= 個人資料設定專用樣式 ================= */
+/* ================= 7.個人資料設定專用樣式 ================= */
 .profile-label {
  font-size: 14px;
  color: var(--text-sub);
@@ -903,7 +900,7 @@ input:checked+.slider:before {
  white-space: pre-line;
 }
 
-/* ================= 求職歷程頁面 (history.html) ================= */
+/* ================= 9.求職歷程頁面 (舊的history.html) ================= */
 
 .history-layout {
  display: grid;
@@ -914,7 +911,16 @@ input:checked+.slider:before {
  margin: 0 auto;
 }
 
-.timeline-section,
+.timeline-section {
+ background: rgba(255, 255, 255, 0.9);
+ border-radius: 14px;
+ padding: 25px;
+ border: 1px solid rgba(0, 0, 0, 0.05);
+ box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+ max-height: none;
+ overflow-y: auto;
+}
+
 .message-section {
  background: rgba(255, 255, 255, 0.9);
  border-radius: 14px;
@@ -922,7 +928,61 @@ input:checked+.slider:before {
  border: 1px solid rgba(0, 0, 0, 0.05);
  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
  max-height: 75vh;
+}
+
+.message-section {
+ display: flex;
+ flex-direction: column;
+ min-height: 0;
+ overflow: hidden;
+}
+
+#messages-container {
+ display: flex;
+ flex-direction: column;
+ flex: 1;
+ min-height: 0;
+}
+
+#chat-messages {
+ flex: 1;
  overflow-y: auto;
+ background: rgba(121, 152, 81, 0.12);
+ border-radius: 12px;
+ padding: 15px;
+}
+
+.msg-row {
+ display: flex;
+ margin-bottom: 12px;
+}
+
+.msg-row.me {
+ justify-content: flex-end;
+}
+
+.msg-bubble {
+ max-width: 70%;
+ padding: 10px 14px;
+ border-radius: 14px;
+ line-height: 1.5;
+ word-break: break-word;
+}
+
+.msg-row.me .msg-bubble {
+ background: var(--primary-green);
+ color: #fff;
+}
+
+.msg-row.them .msg-bubble {
+ background: #fff;
+ border: 1px solid rgba(0,0,0,0.08);
+ color: #333;
+}
+
+.chat-input-area {
+ margin-top: auto;
+ padding-top: 12px;
 }
 
 .section-title {
@@ -1244,3 +1304,26 @@ input:checked+.slider:before {
  white-space: pre-wrap;
  line-height: 1.8;
 }
+
+/* ================= HR 訊息中心專用樣式 ================= */
+.history-container-pad { align-items: center; padding: 30px; }
+.loading-text { text-align: center; color: #999; width: 100%; }
+.chat-title-text { font-weight: bold; color: var(--primary-green); }
+.history-group-wrapper {
+  margin-bottom: 14px; border: 1px solid #dbeafe; border-radius: 12px;
+  padding: 10px 12px; background: #f8fbff; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.history-summary-item { margin-bottom: 8px; border: none; background: transparent; box-shadow: none; padding: 0; width: 100%; }
+.history-detail-container { margin-left: 8px; margin-top: 6px; border-top: 1px solid #dbeafe; padding-top: 8px; }
+.history-detail-item { margin-bottom: 8px; background: #f9fafb; width: 100%; }
+.btn-view-report { margin-top: 8px; width: 100%; font-size: 12px; padding: 5px; }
+.chat-input-area { display: flex; gap: 8px; margin-top: auto; padding-top: 12px; }
+.chat-input-box { flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #ddd; }
+.chat-send-btn { padding: 8px 15px; border-radius: 6px; border: none; background: var(--primary-green); color: #fff; cursor: pointer; font-weight: bold; }
+.msg-bubble-wrapper { margin-bottom: 15px; }
+.msg-bubble-content { display: inline-block; padding: 10px 15px; border-radius: 15px; max-width: 75%; text-align: left; word-break: break-word; }
+.msg-me { text-align: right; }
+.msg-me .msg-bubble-content { background: var(--primary-green); color: white; }
+.msg-them { text-align: left; }
+.msg-them .msg-bubble-content { background: #f1f1f1; color: #333; }
+.empty-chat-msg { text-align: center; color: #999; margin-top: 20px; }

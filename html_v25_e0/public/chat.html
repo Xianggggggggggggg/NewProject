@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>求職歷程 - CareerLab</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="topbar-container"></div>
+  <div id="sidebar-container"></div>
+
+  <div class="section-container active history-container-pad">
+    <div class="history-layout">
+      
+      <div class="timeline-section">
+        <div class="section-title">📋 求職歷程</div>
+        <div id="session-list">
+          <p class="loading-text">加載中...</p>
+        </div>
+      </div>
+
+      <div class="message-section">
+        <div class="section-title">💬 HR 訊息中心</div>
+        <div class="chat-room-header">
+          <div id="chat-position-title" class="chat-title-text">與 HR 的對話紀錄</div>
+        </div>
+        <div id="messages-container">
+          <div id="chat-messages">
+            <p class="loading-text">載入訊息中...</p>
+          </div>
+          
+          <div class="chat-input-area">
+            <input id="chat-input" type="text" class="chat-input-box" placeholder="輸入訊息回覆 HR..." />
+            <button id="chat-send" class="chat-send-btn">傳送</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <template id="history-group-template">
+    <details class="history-group-wrapper">
+      <summary style="cursor:pointer; list-style:none; outline:none;">
+        <div class="session-item success history-summary-item">
+          <div class="session-position js-position-title"></div>
+          <div class="session-time js-session-count"></div>
+        </div>
+      </summary>
+      <div class="history-detail-container js-detail-container"></div>
+    </details>
+  </template>
+
+  <template id="history-item-template">
+    <div class="session-item history-detail-item">
+      <div class="session-position js-date"></div>
+      <div class="session-time js-status"></div>
+      <div class="session-status js-score"></div>
+      <button class="btn-glass btn-view-report js-btn-report">查看報告</button>
+    </div>
+  </template>
+
+  <template id="chat-msg-template">
+    <div class="msg-bubble-wrapper js-msg-wrapper">
+      <div class="msg-bubble-content js-msg-content"></div>
+    </div>
+  </template>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

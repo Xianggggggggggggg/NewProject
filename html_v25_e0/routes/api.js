@@ -36,19 +36,24 @@ router.get('/resume', async (req, res) => {
             });
         }
 
+        // 🌟 1. 在 select 裡面多加一個 autobiography
         const { data: resumeData, error: resumeErr } = await supabase
             .from('resumes')
-            .select('resume_name, education')
+            .select('resume_name, education, language_skills, work_experience, autobiography') 
             .eq('resume_id', sessionData.resume_id)
             .single();
 
         if (resumeErr) throw new Error("找不到對應履歷");
 
+        // 🌟 2. 將自傳也包裝在 JSON 裡回傳給前端
         res.json({
             name: resumeData.resume_name,
             apply_role: sessionData.applied_position || "未指定",
             education: resumeData.education || "未提供學歷",
-            interview_date: new Date(sessionData.start_time).toLocaleDateString()
+            interview_date: new Date(sessionData.start_time).toLocaleDateString(),
+            language_skills: resumeData.language_skills || "未提供",
+            work_experience: resumeData.work_experience || "目前無相關經歷紀錄",
+            autobiography: resumeData.autobiography || "未提供自傳" // 👈 新增這一行
         });
     } catch (err) {
         console.error('❌ 獲取履歷失敗:', err.message);

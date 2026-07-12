@@ -949,11 +949,11 @@ input:checked+.slider:before {
   align-items: center;
 }
 
-/* 讓彈窗具備最大高度，內容過多時自動出現內部捲軸 */
+/* 讓彈窗具備最大高度，內容過多時自動出現內部捲軸(放大鏡的彈窗) */
 .register-modal.resume-form-modal {
-  max-height: 85vh;
+  max-height: 95vh;
   overflow-y: auto;
-  width: 90%;
+  max-width: 1500px;
   padding: 30px;
   box-sizing: border-box;
 }
@@ -1229,4 +1229,37 @@ input:checked+.slider:before {
   text-align:center;
   color:#999;
   padding:30px;
+}
+
+/* ================= 0applicant.html 放大鏡的履歷詳細資料卡片排版 ================= */
+.modal-main-title {
+  text-align: center;
+  color: var(--primary-green);
+  font-size: 24px;
+  margin-bottom: 20px;
+  font-weight: bold;
+}
+
+.preview-item {
+  padding: 15px 0;
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+  text-align: left; /* 🌟 關鍵：強制靠左對齊，解決全部置中的問題 */
+}
+
+.preview-item:last-child {
+  border-bottom: none; /* 最後一個項目不要底線 */
+}
+
+.preview-label {
+  font-size: 13px;
+  color: var(--text-sub);
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.preview-value {
+  font-size: 16px;
+  color: var(--text-main);
+  line-height: 1.6;
+  white-space: pre-line; /* 🌟 關鍵：支援工作經歷的換行顯示 */
 }

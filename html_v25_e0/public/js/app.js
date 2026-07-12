@@ -107,62 +107,59 @@ function checkLoginStateAndUpdateUI() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
- // 🌟 新增：全域路由守門員 (Route Guard)
- // ==========================================
- const token = sessionStorage.getItem('supabase_access_token');
+  // 🌟 全域路由守門員 (Route Guard)
+  // ==========================================
+  const token = sessionStorage.getItem('supabase_access_token');
 
- // 判斷當前畫面是不是「需要保護的頁面」(利用頁面特有的元素來當作標記)
- const isProtectedPage =
- document.getElementById('profile-username') || // 這是「帳號設定」頁
- document.getElementById('resume-grid-container') || // 這是「履歷管理」頁
- document.querySelector('.history-list'); // 這是「歷史紀錄」頁
+  // 判斷當前畫面是不是「需要保護的頁面」(利用頁面特有的元素來當作標記)
+  const isProtectedPage =
+    document.getElementById('profile-username') || // 這是「帳號設定」頁
+    document.getElementById('resume-grid-container') || // 這是「履歷管理」頁
+    document.getElementById('session-list'); // 🌟 修正：這是最新的「歷史紀錄」頁標記
 
- // 如果是受保護的頁面，但沒有通行證 (未登入)
- if (isProtectedPage && !token) {
- alert('🔒 此頁面需要登入才能查看！將為您導向主頁。').then(() => {
- window.location.href = 'lobby.html'; // 把他踢回主頁
- });
- return; // 🛑 關鍵：直接終止，不讓下面的程式碼去畫出網頁的空殼
- }
+  // 如果是受保護的頁面，但沒有通行證 (未登入)
+  if (isProtectedPage && !token) {
+    alert('🔒 此頁面需要登入才能查看！將為您導向主頁。').then(() => {
+      window.location.href = 'lobby.html'; // 把他踢回主頁
+    });
+    return; // 🛑 關鍵：直接終止，不讓下面的程式碼去畫出網頁的空殼
+  }
 
+  loadComponents();
 
- loadComponents();
+  // 根據目前所在頁面執行對應邏輯
+  if (document.getElementById('resume-grid-container')) renderResumes();
+  if (document.getElementById('setup-resume-grid')) renderSetupResumes();
+  if (document.getElementById('localVideo')) initCamera();
+  if (document.getElementById('profile-username')) loadUserProfile();
+  if (document.getElementById('job-grid-container')) renderLobbyJobs();
+  if (document.getElementById('job-detail-container')) renderJobDetail();
+  
+  // 🌟 修正：如果是歷史紀錄頁，就呼叫我們最新寫好的整合函數
+  if (document.getElementById('session-list')) initHistoryAndChat(); 
 
- // 根據目前所在頁面執行對應邏輯
- if (document.getElementById('resume-grid-container')) renderResumes();
- if (document.getElementById('setup-resume-grid')) renderSetupResumes();
- if (document.getElementById('localVideo')) initCamera();
- if (document.getElementById('profile-username')) loadUserProfile();
- if (document.querySelector('.history-list')) loadHistory();
- if (document.getElementById('job-grid-container')) renderLobbyJobs();
- if (document.getElementById('job-detail-container')) renderJobDetail();
+  // 綁定 Enter 鍵自動登入
+  const usernameInput = document.getElementById('username');
+  const passwordInput = document.getElementById('password');
 
- // 綁定 Enter 鍵自動登入
- const usernameInput = document.getElementById('username');
- const passwordInput = document.getElementById('password');
-
- if (usernameInput && passwordInput) {
- // 當在「帳號框」按下鍵盤時
- usernameInput.addEventListener('keypress', function (e) {
- if (e.key === 'Enter') handleLogin(); // 如果按下的是 Enter 鍵，就執行登入
- });
-
- // 當在「密碼框」按下鍵盤時
- passwordInput.addEventListener('keypress', function (e) {
- if (e.key === 'Enter') handleLogin(); // 如果按下的是 Enter 鍵，就執行登入
- });
- }
- // 如果導向 setup.html，自動填寫應徵職位
- if (document.getElementById('setup-position')) {
- const prefill = localStorage.getItem('prefillPosition');
- if (prefill) {
- document.getElementById('setup-position').value = prefill;
- localStorage.removeItem('prefillPosition');
- }
- }
+  if (usernameInput && passwordInput) {
+    usernameInput.addEventListener('keypress', function (e) {
+      if (e.key === 'Enter') handleLogin();
+    });
+    passwordInput.addEventListener('keypress', function (e) {
+      if (e.key === 'Enter') handleLogin();
+    });
+  }
+  
+  // 如果導向 setup.html，自動填寫應徵職位
+  if (document.getElementById('setup-position')) {
+    const prefill = localStorage.getItem('prefillPosition');
+    if (prefill) {
+      document.getElementById('setup-position').value = prefill;
+      localStorage.removeItem('prefillPosition');
+    }
+  }
 });
-
-
 
 // ================= 2. 導覽邏輯 =================
 function toggleMenu() {
@@ -735,62 +732,197 @@ async function updateUserPassword() {
  }
 }
 
-// ================= 8. 歷史記錄管理 (History) =================
+// ================= 8. 歷史記錄與 HR 訊息中心 (History & Chat) =================
 
-// 🌟 載入歷史面試記錄
-async function loadHistory() {
- try {
- const token = typeof window !== 'undefined' ? window.localStorage.getItem('supabase_access_token') : null;
- console.log('📘 loadHistory 開始，supabase_access_token 是否存在：', !!token);
+let currentApplicantId = null;
+let globalChatMessages = []; 
 
- const currentUser = await apiGet('/api/auth/user').catch(err => {
- console.warn('📘 /api/auth/user 取得使用者失敗：', err.message || err);
- return null;
- });
- console.log('📘 目前登入使用者：', currentUser);
+// 🌟 網頁載入時的初始化動作
+async function initHistoryAndChat() {
+  const user = await getCurrentUser();
+  if (!user) return; 
+  
+  currentApplicantId = user.id;
 
- const result = await apiGet('/api/history');
- console.log('📘 /api/history 回傳結果：', result);
- const history = result.history || [];
+  loadHistorySessions(); 
+  loadChatMessages();
+  
+  const chatInput = document.getElementById('chat-input');
+  if(chatInput) {
+      chatInput.addEventListener('keydown', (e) => {
+          if(e.key === 'Enter') sendMsg();
+      });
+  }
 
- const historyList = document.querySelector('.history-list');
- if (!historyList) return;
-
- // 清空現有內容（保留標題等）
- const existingRows = historyList.querySelectorAll('.history-row');
- existingRows.forEach(row => row.remove());
-
- if (history.length === 0) {
- historyList.innerHTML += '<div class="history-row" style="justify-content: center; color: #666;">尚無面試記錄</div>';
- return;
- }
-
- // 動態生成歷史記錄
- history.forEach(item => {
- const row = document.createElement('div');
- row.className = 'history-row';
- row.innerHTML = `
- <span>${item.date}</span>
- <span>${item.position}</span>
- <span class="score">${item.score}</span>
- <span class="icon-view" onclick="viewHistoryDetail('${item.session_id}')">📄</span>
- `;
- historyList.appendChild(row);
- });
- } catch (err) {
- console.error('載入歷史記錄失敗:', err);
- const historyList = document.querySelector('.history-list');
- if (historyList) {
- historyList.innerHTML = `<div class="history-row" style="justify-content: center; color: #c0392b;">載入歷史紀錄失敗：${err.message}</div>`;
- }
- alert('載入歷史記錄失敗，請稍後再試。');
- }
+  const sendBtn = document.getElementById('chat-send');
+  if(sendBtn) {
+      sendBtn.addEventListener('click', sendMsg);
+  }
+  
+  startMessagePolling();
 }
 
-// 🌟 查看歷史記錄詳情
-function viewHistoryDetail(sessionId) {
- // 跳轉到結果頁面，帶上 session_id 參數
- window.location.href = `result.html?session_id=${sessionId}`;
+// 🌟 載入歷史面試記錄
+async function loadHistorySessions() {
+  try {
+    const data = await apiGet('/api/history');
+    const listEl = document.getElementById('session-list');
+
+    if (!data.history || data.history.length === 0) {
+      // 純文字寫入，不含 HTML
+      listEl.textContent = '目前尚無面試歷史紀錄。';
+      listEl.className = 'loading-text';
+      return;
+    }
+
+    const grouped = new Map();
+    data.history.forEach(s => {
+      const key = (s.position || '未指定').trim() || '未指定';
+      if (!grouped.has(key)) {
+        grouped.set(key, []);
+      }
+      grouped.get(key).push(s);
+    });
+
+    // 清空原本的載入中文字 (取代 innerHTML = '')
+    listEl.replaceChildren(); 
+
+    // 取得 HTML 裡的模板
+    const groupTpl = document.getElementById('history-group-template');
+    const itemTpl = document.getElementById('history-item-template');
+
+    Array.from(grouped.keys()).forEach((position) => {
+      const sessions = grouped.get(position);
+      
+      // 複製一個群組骨架
+      const groupClone = groupTpl.content.cloneNode(true);
+      
+      // 填入純文字資料
+      groupClone.querySelector('.js-position-title').textContent = `🎯 職位：${position}`;
+      groupClone.querySelector('.js-session-count').textContent = `📌 共 ${sessions.length} 次紀錄`;
+      
+      const detailContainer = groupClone.querySelector('.js-detail-container');
+
+      // 迴圈塞入每一筆面試紀錄
+      sessions.forEach(s => {
+        const itemClone = itemTpl.content.cloneNode(true); // 複製單筆項目骨架
+        
+        itemClone.querySelector('.js-date').textContent = `🗓️ ${s.date}`;
+        itemClone.querySelector('.js-status').textContent = `⏰ 狀態：${s.status}`;
+        itemClone.querySelector('.js-score').textContent = `📊 評分：${s.score || 'N/A'}`;
+        
+        // 綁定點擊事件，不用寫在 HTML 的 onclick 裡
+        const btn = itemClone.querySelector('.js-btn-report');
+        btn.addEventListener('click', () => {
+          window.location.href = `result.html?session_id=${s.session_id}`;
+        });
+
+        // 把這一筆放入群組的容器裡
+        detailContainer.appendChild(itemClone);
+      });
+      
+      // 把整個群組放進左側列表
+      listEl.appendChild(groupClone);
+    });
+  } catch (error) {
+    console.error('讀取歷史紀錄失敗:', error);
+  }
+}
+
+// 🌟 請後端去抓歷史訊息
+async function loadChatMessages() {
+  try {
+    const data = await apiGet('/api/chat/messages');
+    globalChatMessages = Array.isArray(data.messages) ? data.messages : [];
+    renderChatHistory();
+  } catch (error) {
+    console.error('讀取訊息失敗:', error);
+    const msgBox = document.getElementById('chat-messages');
+    msgBox.textContent = '無法載入訊息，請稍後再試。';
+    msgBox.style.color = 'red';
+  }
+}
+
+// 🌟 把後端給的訊息畫到畫面上
+function renderChatHistory() {
+  const msgBox = document.getElementById('chat-messages');
+  msgBox.replaceChildren(); // 清空容器
+
+  if (globalChatMessages.length === 0) {
+    // 如果沒訊息，建立一個純文字 div
+    const emptyMsg = document.createElement('div');
+    emptyMsg.className = 'empty-chat-msg';
+    emptyMsg.textContent = '目前尚無對話紀錄，您可以主動向 HR 發送訊息。';
+    msgBox.appendChild(emptyMsg);
+    return;
+  }
+
+  const msgTpl = document.getElementById('chat-msg-template');
+
+  globalChatMessages.forEach(m => {
+    const isMe = m.sender_role === 'applicant';
+    const clone = msgTpl.content.cloneNode(true);
+    
+    const wrapper = clone.querySelector('.js-msg-wrapper');
+    const content = clone.querySelector('.js-msg-content');
+
+    // 根據身分加上對應的 CSS class
+    wrapper.classList.add(isMe ? 'msg-me' : 'msg-them');
+    
+    // 使用 textContent 塞入文字，這會自動過濾所有的 XSS 惡意程式碼！
+    content.textContent = m.content;
+
+    msgBox.appendChild(clone);
+  });
+  
+  msgBox.scrollTop = msgBox.scrollHeight;
+}
+
+// 🌟 把輸入的文字打包，交給後端去存進資料庫
+async function sendMsg() {
+  const input = document.getElementById('chat-input');
+  const btn = document.getElementById('chat-send');
+  const text = input.value.trim();
+  
+  if (!text || !currentApplicantId) return;
+
+  input.disabled = true;
+  btn.disabled = true;
+
+  try {
+    const result = await apiPost('/api/chat/messages', { content: text });
+    
+    if (result.message) {
+      globalChatMessages.push(result.message);
+      renderChatHistory();
+      input.value = ''; 
+    }
+  } catch (error) {
+    console.error('傳送訊息失敗:', error);
+    alert('傳送失敗: ' + error.message);
+  } finally {
+    input.disabled = false;
+    btn.disabled = false;
+    input.focus();
+  }
+}
+
+// 🌟 輪詢機制
+function startMessagePolling() {
+  setInterval(async () => {
+    if (!currentApplicantId) return;
+    try {
+      const data = await apiGet('/api/chat/messages');
+      const newMessages = Array.isArray(data.messages) ? data.messages : [];
+      
+      if (newMessages.length > globalChatMessages.length) {
+        globalChatMessages = newMessages;
+        renderChatHistory();
+      }
+    } catch (err) {
+      // 靜默處理
+    }
+  }, 5000); 
 }
 
 

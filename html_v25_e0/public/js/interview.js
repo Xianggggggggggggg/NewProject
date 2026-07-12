@@ -3,6 +3,12 @@ const EAR_THRESHOLD = 0.20;
 const SMILE_THRESHOLD = 1.45;
 const FROWN_THRESHOLD = 0.015;
 
+// 🌟 新增：主語者聲音過濾特徵設定
+const AUDIO_VOLUME_GATE = 0.02;      // 音量閘門（低於此音量視為背景雜音或距離遠的人聲）
+const FREQUENCY_BIN_TOLERANCE = 6;   // 頻譜 Bin 容許誤差（在 16kHz/2048FFT 下，一個 Bin 約 7.8Hz，6 個 Bin 約 ±46Hz）
+let audioAnalyser = null;            // 頻譜分析器
+let mainSpeakerAnchorBin = null;     // 主面試者的聲音頻率錨定點
+
 // 全域錯誤處理 - 捕獲 WebGL 相關錯誤
 window.addEventListener('error', (event) => {
     if (event.error && event.error.message && event.error.message.includes('WebGL')) {
@@ -67,7 +73,7 @@ let mouthFrameCount = 0;
 let currentMouthStrength = 0;                 
 
 // ==========================================
-// 🌟 新增：應徵者本地語音辨識器 (給真人插話時備用的打字員)
+// 🌟 應徵者本地語音辨識器 (給真人插話時備用的打字員)
 // ==========================================
 let userRecognition = null;
 if ('webkitSpeechRecognition' in window) {
@@ -87,7 +93,7 @@ if ('webkitSpeechRecognition' in window) {
             }
         }
     };
-    
+
     // 如果還在暫停中就不小心斷掉，自動重啟監聽
     userRecognition.onend = () => {
         if (window.isAIPaused && userRecognition) {
@@ -434,6 +440,12 @@ async function startInterviewAI() {
             audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
         });
 
+        // 🌟 頻譜分析器設定 (語者過濾用)：
+        audioAnalyser = audioContext.createAnalyser();
+        audioAnalyser.fftSize = 2048; // 設定頻譜解析度
+        const bufferLength = audioAnalyser.frequencyBinCount;
+        const frequencyDataArray = new Uint8Array(bufferLength);
+
         videoElement.srcObject = stream;
 
         videoElement.onloadeddata = async () => {
@@ -565,7 +577,23 @@ async function startInterviewAI() {
                     sessionId: sessionId 
                 }));
             }
+            if (data.customType === 'ai_finished_handover_to_human') {
+                console.log("👋 AI 面試官已退場，等待真人對話...");
 
+                // 1. 清空或關閉 AI 的講話動畫影片
+                stopAllAudio();
+
+                // 2. 在對話筐噴一條親切的系統提示，但「絕對不要」呼叫 handleEndInterview()
+                const box = document.getElementById('transcriptBox');
+                if (box) {
+                    const tipDiv = document.createElement('div');
+                    tipDiv.style = "padding:10px; background:#e8f5e9; color:#2e7d32; border-radius:8px; text-align:center; margin:10px 0;";
+                    tipDiv.innerHTML = "📢 <b>系統提示：</b>AI 面試官已完成既定提問。請留在原位，由線上真人面試官為您進行後續互動。";
+                    box.appendChild(tipDiv);
+                    box.scrollTop = box.scrollHeight;
+                }
+            }
+            
             // 3. 接收企業端的網路路徑
             if (data.type === 'webrtc_ice_candidate') {
                 if (peerConnection) {
@@ -586,9 +614,9 @@ async function startInterviewAI() {
             // ==========================================
             if (data.customType === 'kill_ai_audio') {
                 console.log("🛑 [系統] 真人插話，強制中斷 AI 語音！");
-                window.isAIPaused = true; // 鎖住前端接收器
+                window.isAIPaused = true; // 鎖住接收器
                 stopAllAudio();           // 瞬間殺掉所有庫存聲音
-                
+
                 // 🌟 核心神招：求職者反向命令自己的後端連線，徹底切斷 Gemini！
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ customType: 'execute_backend_pause' }));
@@ -600,8 +628,8 @@ async function startInterviewAI() {
             }
             if (data.customType === 'resume_ai_audio') {
                 console.log("▶️ [系統] 恢復 AI 語音接收！");
-                window.isAIPaused = false; // 解鎖前端接收器
-                
+                window.isAIPaused = false; // 解鎖接收器
+
                 // 🌟 核心神招：命令後端喚醒 Gemini
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ customType: 'execute_backend_resume' }));
@@ -651,22 +679,44 @@ async function startInterviewAI() {
 
         processor = audioContext.createScriptProcessor(4096, 1, 1);
         processor.onaudioprocess = (e) => {
-            if (ws && ws.readyState === WebSocket.OPEN && isSetupComplete) {
-                const inputData = e.inputBuffer.getChannelData(0);
-                const pcmData = new Int16Array(inputData.length);
-                for (let i = 0; i < inputData.length; i++) {
-                    pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 32767;
+                if (ws && ws.readyState === WebSocket.OPEN && isSetupComplete) {
+                    const inputData = e.inputBuffer.getChannelData(0);
+
+                    // 🌟 1. 計算當前音量振幅 (RMS)
+                    let rms = 0;
+                    for (let i = 0; i < inputData.length; i++) {
+                        rms += inputData[i] * inputData[i];
+                    }
+                    rms = Math.sqrt(rms / inputData.length);
+
+                    // 🌟 2. 語者過濾核心邏輯 (溫和版：動態音量降噪閘門)
+                    // 我們拿掉會切碎子音的「頻率硬攔截」，改用安全的「音量閘門」
+                    // 如果環境太安靜或聲音太遠，就視為雜音
+                    let isMainSpeaker = true;
+                    if (rms < AUDIO_VOLUME_GATE) {
+                        isMainSpeaker = false;
+                    }
+
+                    // 🌟 3. 關鍵修復：維持音軌連續性的「軟靜音 (Soft Mute)」
+                    const pcmData = new Int16Array(inputData.length);
+                    for (let i = 0; i < inputData.length; i++) {
+                        // 如果是主要說話者，就正常收音；如果判定是雜音，就塞 0 (完全靜音)
+                        // 這樣封包數量不變，Gemini 聽到的時間軸就不會錯亂！
+                        let sample = isMainSpeaker ? inputData[i] : 0;
+                        pcmData[i] = Math.max(-1, Math.min(1, sample)) * 32767;
+                    }
+
+                    const base64Audio = btoa(String.fromCharCode.apply(null, new Uint8Array(pcmData.buffer)));
+
+                    ws.send(JSON.stringify({
+                        realtimeInput: { audio: { mimeType: "audio/pcm;rate=16000", data: base64Audio } }
+                    }));
                 }
-                const base64Audio = btoa(String.fromCharCode.apply(null, new Uint8Array(pcmData.buffer)));
-                
-                ws.send(JSON.stringify({
-                    realtimeInput: { audio: { mimeType: "audio/pcm;rate=16000", data: base64Audio } }
-                }));
-            }
-        };
-        
+            };
+
         const sourceNode = audioContext.createMediaStreamSource(stream);
-        sourceNode.connect(processor);
+        sourceNode.connect(audioAnalyser);  // 麥克風 -> 分析器
+        audioAnalyser.connect(processor);   // 分析器 -> 數據處理器
         processor.connect(audioContext.destination);
 
     } catch (err) {
