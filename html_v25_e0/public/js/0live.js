@@ -429,7 +429,7 @@ function checkVolumeLoop() {
     let userSum = 0; for(let i=0; i<userDataArray.length; i++) userSum += userDataArray[i];
     let userAvg = userSum / userDataArray.length;
 
-    const THRESHOLD = 12; // 🌟 敏感度 (數字越小越敏感，覺得難觸發可以改小)
+    const THRESHOLD = 18; // 🌟 敏感度 (數字越小越敏感，覺得難觸發可以改小)
 
     if (hrAvg > THRESHOLD) {
         // HR 一講話，立刻砸停 AI！
@@ -471,7 +471,7 @@ function resetSilenceTimer() {
                 title.style.color = "var(--text-main)";
             }
         }
-    }, 4000); // 4000毫秒 = 4秒
+    }, 1500); // 4000毫秒 = 4秒
 }
 
 // ==========================================
