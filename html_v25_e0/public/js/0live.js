@@ -375,7 +375,17 @@ let userAnalyser = null;
 let hrDataArray = null;
 let userDataArray = null;
 
+// 🌟 1. 新增這把防護鎖！(這行很重要，要放在函數外面)
+let isVadStarted = false; 
+
 function startAutoVoiceDetection(localStream, remoteStream) {
+    // 🌟 2. 核心防護：如果雷達已經啟動過，就直接退回，絕對不跑第二次！
+    if (isVadStarted) {
+        console.log("🛡️ [VAD] 攔截重複觸發：雷達已經在運作中！");
+        return; 
+    }
+    isVadStarted = true; // 鎖上鎖頭
+
     audioContextVAD = new (window.AudioContext || window.webkitAudioContext)();
 
     try {
@@ -397,6 +407,8 @@ function startAutoVoiceDetection(localStream, remoteStream) {
         console.log("📡 [VAD] 全自動聲控雷達已啟動！");
     } catch (e) {
         console.error("VAD 啟動失敗:", e);
+        // 如果發生錯誤，把鎖解開允許重試
+        isVadStarted = false; 
     }
 }
 
