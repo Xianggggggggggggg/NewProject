@@ -375,18 +375,23 @@ let userAnalyser = null;
 let hrDataArray = null;
 let userDataArray = null;
 
-// 🌟 1. 新增這把防護鎖！(這行很重要，要放在函數外面)
+// 🔒 防護一：你抓到的 Bug，新增全域鎖頭阻擋 ontrack 重複觸發！
 let isVadStarted = false; 
 
 function startAutoVoiceDetection(localStream, remoteStream) {
-    // 🌟 2. 核心防護：如果雷達已經啟動過，就直接退回，絕對不跑第二次！
     if (isVadStarted) {
         console.log("🛡️ [VAD] 攔截重複觸發：雷達已經在運作中！");
         return; 
     }
-    isVadStarted = true; // 鎖上鎖頭
+    isVadStarted = true;
 
-    audioContextVAD = new (window.AudioContext || window.webkitAudioContext)();
+    // 🔌 防護二：我搞砸的 Bug！絕對不能 new 新的引擎，直接共用主電源！
+    if (!window.audioContext) {
+        console.error("❌ 找不到主音效引擎，雷達無法啟動！");
+        isVadStarted = false; // 解開鎖頭以防後續重試
+        return;
+    }
+    audioContextVAD = window.audioContext; // 🌟 關鍵修正：直接拿來用
 
     try {
         // 1. 監聽 HR 的麥克風
@@ -404,10 +409,9 @@ function startAutoVoiceDetection(localStream, remoteStream) {
         userDataArray = new Uint8Array(userAnalyser.frequencyBinCount);
 
         checkVolumeLoop();
-        console.log("📡 [VAD] 全自動聲控雷達已啟動！");
+        console.log("📡 [VAD] 全自動聲控雷達已成功接上主電源並啟動！");
     } catch (e) {
         console.error("VAD 啟動失敗:", e);
-        // 如果發生錯誤，把鎖解開允許重試
         isVadStarted = false; 
     }
 }
@@ -515,6 +519,11 @@ if ('webkitSpeechRecognition' in window) {
                     ws.send(JSON.stringify({ type: 'hr_human_speech', text: text, sessionId: targetSessionId }));
                 }
             }
+        }
+    };
+    hrRecognition.onend = () => {
+        if (isMicOn && hrRecognition) {
+            try { hrRecognition.start(); } catch(e){}
         }
     };
 }
