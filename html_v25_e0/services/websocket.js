@@ -426,9 +426,10 @@ function setupWebSocket(server) {
                     }
                     currentInterviewer = 'HUMAN_INTERVENING';
 
-                    const stopMsg = JSON.stringify({ clientContent: { turns: [{ role: "user", parts: [{ text: `[系統強制指令] 真人面試官現在要親自插話。請你立刻停止發言，並進入待機狀態。` }] }], turnComplete: true } });
-                    if (previousInterviewer === 'HR' && hrWs && hrWs.readyState === WebSocket.OPEN) hrWs.send(stopMsg);
-                    if (previousInterviewer === 'MANAGER' && managerWs && managerWs.readyState === WebSocket.OPEN) managerWs.send(stopMsg);
+                    // 🌟 修復「AI恢復時暫停太久」：不再送 stopMsg 叫 Gemini 講「待機」台詞。
+                    // 因為上面 currentInterviewer 的判斷（第219行）已經會擋掉聲音轉發，
+                    // 這句「待機」台詞其實沒人聽得到，卻會讓 Gemini 白白花時間生成語音，
+                    // 導致 resume 時的指令得排在它後面，造成明顯延遲。直接靜音等待即可。
                     return;
                 }
 
