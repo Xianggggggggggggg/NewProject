@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+  <meta charset="UTF-8">
+  <title>面試結果 - MIND Interview 面試系統</title>
+  <link rel="stylesheet" href="css/style.css">
+  <!-- Chart.js for radar chart -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <style>
+    /* ============================================================
+       RESULT PAGE — 升級版指標儀表板
+       新增：雷達圖 / 情緒分析 / 百分位排名 / 與平均值比較
+    ============================================================ */
+
+    /* --- 整體佈局 --- */
+    .result-layout {
+      display: flex;
+      gap: 28px;
+      max-width: 1160px;
+      width: 100%;
+      margin: 0 auto;
+      align-items: flex-start;
+    }
+
+    /* -------- 左欄 -------- */
+    .left-col {
+      width: 230px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* 評等大字卡 */
+    .grade-hero {
+      background: #fff;
+      border: 1px solid rgba(0,0,0,0.06);
+      border-radius: 16px;
+      padding: 24px 16px 20px;
+      text-align: center;
+    }
+    .grade-letter {
+      font-size: 88px;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--primary-green, #1D9E75);
+      letter-spacing: -4px;
+    }
+    .grade-headline {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-main, #333);
+      margin-top: 6px;
+    }
+    .grade-sub {
+      font-size: 13px;
+      color: var(--text-sub, #666);
+      margin-top: 2px;
+    }
+    .recommend-badge {
+      display: inline-block;
+      margin-top: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(29,158,117,0.1);
+      color: var(--primary-green, #1D9E75);
+      border: 1px solid rgba(29,158,117,0.28);
+      padding: 5px 14px;
+      border-radius: 20px;
+    }
+
+    /* 候選人 meta 卡 */
+    .meta-card {
+      background: #fff;
+      border: 1px solid rgba(0,0,0,0.06);
+      border-radius: 14px;
+      padding: 16px;
+    }
+    .meta-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      margin-bottom: 11px;
+    }
+    .meta-row:last-child { margin-bottom: 0; }
+    .meta-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: #f4f7f8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+      color: var(--text-sub, #666);
+    }
+    .meta-label { font-size: 11px; color: var(--text-sub, #888); line-height: 1; margin-bottom: 2px; }
+    .meta-val { font-size: 13px; font-weight: 500; color: var(--text-main, #333); line-height: 1.3; }
+
+    /* 雷達圖卡 */
+    .radar-card {
+      background: #fff;
+      border: 1px solid rgba(0,0,0,0.06);
+      border-radius: 14px;
+      padding: 16px;
+    }
+    .card-mini-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-sub, #888);
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    /* -------- 右欄 -------- */
+    .right-col {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* ★ 四維度指標列（含百分位） */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .metric-card {
+      background: #fff;
+      border: 1px solid rgba(0,0,0,0.06);
+      border-radius: 13px;
+      padding: 14px;
+      position: relative;
+      overflow: hidden;
+    }
+    .metric-accent-bar {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      border-radius: 13px 13px 0 0;
+    }
+    .metric-label {
+      font-size: 11px;
+      color: var(--text-sub, #888);
+      margin-bottom: 5px;
+      letter-spacing: 0.3px;
+    }
+    .metric-score {
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--text-main, #333);
+      line-height: 1;
+    }
+    .metric-score small {
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--text-sub, #999);
+    }
+    .metric-bar-bg {
+      height: 4px;
+      background: rgba(0,0,0,0.07);
+      border-radius: 2px;
+      margin-top: 9px;
+      overflow: hidden;
+    }
+    .metric-bar-fill {
+      height: 4px;
+      border-radius: 2px;
+      width: 0%;
+      transition: width 0.8s cubic-bezier(.4,0,.2,1);
+    }
+    .metric-percentile {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 7px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .pct-up   { color: var(--primary-green, #1D9E75); }
+    .pct-down { color: #e67e22; }
+    .pct-mid  { color: #888; }
+
+    /* ★ 情緒分析列 */
+    .emotion-section {
+      background: #fff;
+      border: 1px solid rgba(0,0,0,0.06);
+      border-radius: 14px;
+      padding: 18px 20px;
+    }
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-main, #333);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-badge {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-sub, #888);
+      background: #f4f7f8;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .emotion-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0,1fr));
+      gap: 10px;
+    }
+    .emo-card {
+      background: #f9fafb;
+      border-radius: 11px;
+      padding: 13px;
+    }
+    .emo-label {
+      font-size: 12px;
+      color: var(--text-sub, #888);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .emo-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .emo-track {
+      height: 6px;
+      background: rgba(0,0,0,0.07);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 7px;
+    }
+    .emo-fill {
+      height: 6px;
+      border-radius: 3px;
+      width: 0%;
+      transition: width 0.9s cubic-bezier(.4,0,.2,1);
+    }
+    .emo-pct {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-main, #333);
+    }
+    .emo-note {
+      font-size: 11px;
+      color: var(--text-sub, #999);
+      margin-top: 2px;
+    }
+
+    /* ★ 百分位排名視覺條 */
+    .percentile-section {
+      background: #fff;
+      border: 1px solid rgba(0,0,0,0.06);
+      border-radius: 14px;
+      padding: 18px 20px;
+    }
+    .pct-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .pct-row:last-child { margin-bottom: 0; }
+    .pct-dim {
+      font-size: 12px;
+      color: var(--text-sub, #666);
+      width: 70px;
+      flex-shrink: 0;
+    }
+    .pct-track {
+      flex: 1;
+      height: 8px;
+      background: rgba(0,0,0,0.06);
+      border-radius: 4px;
+      position: relative;
+      overflow: visible;
+    }
+    .pct-fill {
+      height: 8px;
+      border-radius: 4px;
+      width: 0%;
+      transition: width 1s cubic-bezier(.4,0,.2,1);
+      position: relative;
+    }
+    .pct-marker-avg {
+      position: absolute;
+      top: -3px;
+      width: 2px;
+      height: 14px;
+      background: rgba(0,0,0,0.18);
+      border-radius: 1px;
+    }
+    .pct-value {
+      font-size: 12px;
+      font-weight: 600;
+      width: 58px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    /* ★ AI 分析 + 標籤區 */
+    .analysis-card {
+      background: #fff;
+      border: 1px solid rgba(0,0,0,0.06);
+      border-radius: 14px;
+      padding: 20px 22px;
+    }
+    .summary-body {
+      font-size: 14px;
+      line-height: 1.85;
+      color: var(--text-sub, #555);
+      padding-bottom: 16px;
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+      margin-bottom: 16px;
+      white-space: pre-wrap;
+    }
+    .tag-two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .tag-col-title {
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 9px;
+      letter-spacing: 0.3px;
+    }
+    .hl-title { color: var(--primary-green, #1D9E75); }
+    .wn-title { color: #e67e22; }
+    .tag-wrap { display: flex; flex-wrap: wrap; gap: 7px; }
+    .tag {
+      font-size: 12px;
+      font-weight: 500;
+      padding: 4px 11px;
+      border-radius: 20px;
+    }
+    .tag-hl {
+      background: rgba(29,158,117,0.09);
+      color: var(--primary-green, #1D9E75);
+      border: 1px solid rgba(29,158,117,0.22);
+    }
+    .tag-wn {
+      background: rgba(230,126,34,0.09);
+      color: #e67e22;
+      border: 1px solid rgba(230,126,34,0.22);
+    }
+
+    /* ★ QA 問答 */
+    .qa-card {
+      background: #fff;
+      border: 1px solid rgba(0,0,0,0.06);
+      border-radius: 14px;
+      padding: 18px 20px 12px;
+    }
+    .qa-item {
+      border: 1px solid rgba(0,0,0,0.06);
+      border-radius: 10px;
+      margin-bottom: 8px;
+      overflow: hidden;
+      cursor: pointer;
+      background: #fafafa;
+      transition: box-shadow 0.2s;
+    }
+    .qa-item:hover { box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+    .qa-item.open { background: #fff; }
+    .qa-header {
+      display: flex;
+      align-items: center;
+      padding: 12px 14px;
+      gap: 10px;
+    }
+    .qa-num {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-sub, #999);
+      width: 22px;
+      flex-shrink: 0;
+    }
+    .qa-q {
+      font-size: 13px;
+      color: var(--text-main, #333);
+      font-weight: 500;
+      flex: 1;
+      line-height: 1.45;
+    }
+    .qa-score-pill {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 12px;
+      flex-shrink: 0;
+    }
+    .pill-high { background: rgba(29,158,117,0.1); color: var(--primary-green, #1D9E75); }
+    .pill-mid  { background: rgba(230,126,34,0.1); color: #e67e22; }
+    .pill-low  { background: rgba(231,76,60,0.1);  color: #e74c3c; }
+    .qa-arrow { font-size: 12px; color: var(--text-sub, #999); transition: transform 0.2s; }
+    .qa-item.open .qa-arrow { transform: rotate(180deg); }
+    .qa-answer {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+      font-size: 13px;
+      color: var(--text-sub, #666);
+      line-height: 1.75;
+      padding: 0 14px;
+    }
+    .qa-item.open .qa-answer { padding-bottom: 13px; }
+
+    /* 操作按鈕 */
+    .action-btn-row {
+      display: flex;
+      gap: 10px;
+    }
+    .btn-action {
+      flex: 1;
+      padding: 13px 0;
+      font-size: 14px;
+      border-radius: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      letter-spacing: 0.3px;
+      transition: 0.2s;
+      text-align: center;
+      border: none;
+    }
+    .btn-primary {
+      background: var(--primary-green, #1D9E75);
+      color: #fff;
+    }
+    .btn-primary:hover { opacity: 0.88; box-shadow: 0 4px 14px rgba(29,158,117,0.28); }
+    .btn-secondary {
+      background: #fff;
+      color: var(--text-main, #333);
+      border: 1px solid rgba(0,0,0,0.1) !important;
+    }
+    .btn-secondary:hover { background: #f4f7f8; }
+
+    /* 錯誤框 */
+    #report-error {
+      display: none;
+      color: #ff4757;
+      background: #ffecec;
+      border-radius: 10px;
+      padding: 15px;
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Loading overlay -->
+  <div id="loading-overlay"
+    style="display:flex; position:fixed; inset:0; background:rgba(255,255,255,0.85);
+           backdrop-filter:blur(4px); z-index:999; justify-content:center; align-items:center;
+           flex-direction:column; font-size:17px; color:#555;">
+    <div style="font-size:38px; margin-bottom:14px;">⏳</div>
+    <div>AI 正在讀取面試報告，請稍候...</div>
+    <div style="font-size:13px; color:#999; margin-top:6px;">此過程大約需要 10 ~ 20 秒</div>
+  </div>
+
+  <div class="section-container active">
+    <div class="result-layout">
+
+      <!-- ══════════════ 左欄 ══════════════ -->
+      <div class="left-col">
+
+        <!-- 評等卡 -->
+        <div class="grade-hero">
+          <div class="grade-letter" id="scoreGrade">--</div>
+          <div class="grade-headline" id="scoreTitle">生成中...</div>
+          <div class="grade-sub" id="scoreSubtitle">綜合評分 -- / 100</div>
+          <div class="recommend-badge" id="recommendBadge" style="display:none;">建議進入下一輪 ✓</div>
+        </div>
+
+        <!-- 候選人 meta -->
+        <div class="meta-card">
+          <div class="meta-row">
+            <div class="meta-icon">👤</div>
+            <div>
+              <div class="meta-label">應徵者</div>
+              <div class="meta-val" id="candidateName">載入中...</div>
+            </div>
+          </div>
+          <div class="meta-row">
+            <div class="meta-icon">💼</div>
+            <div>
+              <div class="meta-label">應徵職位</div>
+              <div class="meta-val" id="candidateRole">載入中...</div>
+            </div>
+          </div>
+          <div class="meta-row">
+            <div class="meta-icon">🎓</div>
+            <div>
+              <div class="meta-label">學歷</div>
+              <div class="meta-val" id="candidateEdu">載入中...</div>
+            </div>
+          </div>
+          <div class="meta-row">
+            <div class="meta-icon">📅</div>
+            <div>
+              <div class="meta-label">面試日期</div>
+              <div class="meta-val" id="interviewDate">載入中...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 雷達圖 -->
+        <div class="radar-card">
+          <div class="card-mini-title">能力雷達圖</div>
+          <div style="position:relative; width:100%; height:180px;">
+            <canvas id="radarChart"
+              role="img"
+              aria-label="五維度能力雷達圖，顯示技術能力、溝通表達、邏輯思維、學習潛力、抗壓表現的分布">
+              五維度能力分布
+            </canvas>
+          </div>
+        </div>
+
+      </div>
+      <!-- ══════ 左欄結束 ══════ -->
+
+
+      <!-- ══════════════ 右欄 ══════════════ -->
+      <div class="right-col">
+
+        <!-- 錯誤提示 -->
+        <div id="report-error">資料讀取失敗，請確認伺服器與 session 狀態。</div>
+
+        <!-- ★ 四維度指標（含百分位箭頭） -->
+        <div class="metrics-grid" id="metrics-grid" style="display:none;">
+          <div class="metric-card">
+            <div class="metric-accent-bar" style="background:#1D9E75;"></div>
+            <div class="metric-label">技術能力</div>
+            <div class="metric-score" id="m-tech">-- <small>/ 100</small></div>
+            <div class="metric-bar-bg">
+              <div class="metric-bar-fill" id="bar-tech" style="background:#1D9E75;"></div>
+            </div>
+            <div class="metric-percentile pct-up" id="pct-tech">　</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-accent-bar" style="background:#378ADD;"></div>
+            <div class="metric-label">溝通表達</div>
+            <div class="metric-score" id="m-comm">-- <small>/ 100</small></div>
+            <div class="metric-bar-bg">
+              <div class="metric-bar-fill" id="bar-comm" style="background:#378ADD;"></div>
+            </div>
+            <div class="metric-percentile pct-up" id="pct-comm">　</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-accent-bar" style="background:#534AB7;"></div>
+            <div class="metric-label">邏輯思維</div>
+            <div class="metric-score" id="m-logic">-- <small>/ 100</small></div>
+            <div class="metric-bar-bg">
+              <div class="metric-bar-fill" id="bar-logic" style="background:#534AB7;"></div>
+            </div>
+            <div class="metric-percentile pct-up" id="pct-logic">　</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-accent-bar" style="background:#EF9F27;"></div>
+            <div class="metric-label">學習潛力</div>
+            <div class="metric-score" id="m-learn">-- <small>/ 100</small></div>
+            <div class="metric-bar-bg">
+              <div class="metric-bar-fill" id="bar-learn" style="background:#EF9F27;"></div>
+            </div>
+            <div class="metric-percentile pct-up" id="pct-learn">　</div>
+          </div>
+        </div>
+
+        <!-- ★ 情緒分析列 -->
+        <div class="emotion-section" id="emotion-section" style="display:none; margin-bottom: 16px;">
+          <div class="section-title">
+            👁️ AI 視覺微表情分析
+            <span class="section-badge" style="background:#e0f7fa; color:#0097e6;">攝影機即時捕捉</span>
+          </div>
+          
+          <div style="display: flex; gap: 15px; margin-bottom: 20px;">
+            <div style="flex: 1; background: #f4f7f8; border-radius: 12px; padding: 15px; display: flex; align-items: center; gap: 15px;">
+              <div style="font-size: 40px; font-weight: 900; color: var(--primary-green);" id="visual-focus-score">--</div>
+              <div>
+                <div style="font-size: 12px; color: #888; margin-bottom: 4px;">影像專注度總分</div>
+                <div style="font-size: 14px; font-weight: bold; color: #333;">
+                  面試狀態：<span id="visual-final-emotion" style="color: var(--primary-green); background: rgba(29,158,117,0.1); padding: 3px 8px; border-radius: 6px;">分析中</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="flex: 1; background: #fff4e6; border-radius: 12px; padding: 15px; display: flex; align-items: center; gap: 15px;">
+              <div style="font-size: 40px; font-weight: 900; color: #e67e22;" id="visual-blink-count">--</div>
+              <div>
+                <div style="font-size: 12px; color: #888; margin-bottom: 4px;">總眨眼次數</div>
+                <div style="font-size: 13px; color: #666;" id="visual-blink-note">過度眨眼可能代表緊張或焦慮</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="emotion-grid">
+            <div class="emo-card">
+              <div class="emo-label"><div class="emo-dot" style="background:#1D9E75;"></div>正向情緒（開心）</div>
+              <div class="emo-track"><div class="emo-fill" id="emo-joy" style="background:#1D9E75;"></div></div>
+              <div class="emo-pct" id="emo-joy-val">--%</div>
+              <div class="emo-note" id="emo-joy-note">　</div>
+            </div>
+            <div class="emo-card">
+              <div class="emo-label"><div class="emo-dot" style="background:#888;"></div>中性情緒（穩定）</div>
+              <div class="emo-track"><div class="emo-fill" id="emo-neu" style="background:#888;"></div></div>
+              <div class="emo-pct" id="emo-neu-val">--%</div>
+              <div class="emo-note" id="emo-neu-note">　</div>
+            </div>
+            <div class="emo-card">
+              <div class="emo-label"><div class="emo-dot" style="background:#e67e22;"></div>焦慮情緒（緊張）</div>
+              <div class="emo-track"><div class="emo-fill" id="emo-anx" style="background:#e67e22;"></div></div>
+              <div class="emo-pct" id="emo-anx-val">--%</div>
+              <div class="emo-note" id="emo-anx-note">　</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ★ 百分位排名條 -->
+        <div class="percentile-section" id="percentile-section" style="display:none;">
+          <div class="section-title">
+            百分位排名
+            <span class="section-badge">與所有面試者比較</span>
+          </div>
+          <!-- rows injected by JS -->
+          <div id="pct-rows-container"></div>
+          <div style="margin-top:10px; font-size:11px; color:#aaa; display:flex; align-items:center; gap:6px;">
+            <div style="width:2px; height:12px; background:rgba(0,0,0,0.18); border-radius:1px; flex-shrink:0;"></div>
+            灰線代表所有應徵者平均位置
+          </div>
+        </div>
+
+        <!-- AI 總結 + 標籤 -->
+        <div class="analysis-card" id="analysis-card">
+          <div class="section-title">AI 總結分析</div>
+          <div class="summary-body" id="result-report-content">
+            <div style="text-align:center; padding:28px; color:#1D9E75;">
+              <b>🧠 AI 正在深度分析這場面試...</b>
+            </div>
+          </div>
+          <div class="tag-two-col">
+            <div>
+              <div class="tag-col-title hl-title">✦ 核心亮點</div>
+              <div class="tag-wrap" id="tag-highlights"></div>
+            </div>
+            <div>
+              <div class="tag-col-title wn-title">⚠ 待觀察項目</div>
+              <div class="tag-wrap" id="tag-concerns"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 逐題問答 -->
+        <div class="qa-card" id="qa-card" style="display:none;">
+          <div class="section-title">逐題問答紀錄</div>
+          <div id="qa-container"></div>
+        </div>
+
+        <!-- 操作按鈕 -->
+        <div class="action-btn-row">
+          <button class="btn-action btn-primary" onclick="window.location.href='history.html'">觀看歷史紀錄 ↗</button>
+          <button class="btn-action btn-secondary" id="btn-export-pdf">匯出 PDF 報告</button>
+          <button class="btn-action btn-secondary" onclick="window.location.href='lobby.html'">回到主頁</button>
+        </div>
+
+      </div>
+      <!-- ══════ 右欄結束 ══════ -->
+
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+  <script>
+    /* ============================================================
+       MIND Interview — Result Page Script
+       升級版：雷達圖 / 情緒分析 / 百分位排名
+    ============================================================ */
+
+    // ── 輔助：夾值
+    function clamp(v) { return Math.min(Math.max(Math.round(v), 0), 100); }
+
+    // ── 輔助：根據分數決定百分位（本地估算，可替換為後端資料）
+    function scoreToPct(score) {
+      // 簡單線性對映：假設分數常態分布 mean=70, sd=12
+      const z = (score - 70) / 12;
+      const pct = Math.round(50 + z * 34.1); // 近似常態累積
+      return clamp(pct);
+    }
+
+    // ── 輔助：百分位顯示文字 & 樣式
+    function pctLabel(score, avg, pct) {
+      const diff = score - avg;
+      if (diff > 5)  return { cls: 'pct-up',   text: `↑ 高於平均 ${diff} 分（前 ${100 - pct}%）` };
+      if (diff < -5) return { cls: 'pct-down',  text: `↓ 低於平均 ${Math.abs(diff)} 分（後 ${pct}%）` };
+      return { cls: 'pct-mid', text: `≈ 接近平均水準（${pct} 百分位）` };
+    }
+
+    // ── 平均值（可從後端取得；這裡用假設值）
+    const AVERAGES = { tech: 70, comm: 68, logic: 72, learn: 65, stress: 66 };
+
+    // ── Loading 控制
+    function showLoading(v) {
+      document.getElementById('loading-overlay').style.display = v ? 'flex' : 'none';
+    }
+
+    // ── 渲染候選人資料
+    function renderResume(resume) {
+      document.getElementById('candidateName').textContent = resume.name || '未知姓名';
+      document.getElementById('candidateRole').textContent = resume.apply_role || '未指定';
+      document.getElementById('candidateEdu').textContent = resume.education || '未提供';
+      document.getElementById('interviewDate').textContent = resume.interview_date || '--';
+    }
+
+    // ── 情緒備注文字
+    function emoNote(pct, type) {
+      if (type === 'joy')  return pct >= 60 ? '表現積極正向 ✓' : pct >= 40 ? '情緒適中' : '正向情緒偏低';
+      if (type === 'neu')  return pct >= 25 ? '維持穩定表現 ✓' : '穩定佔比偏少';
+      if (type === 'anx')  return pct <= 15 ? '壓力管理良好 ✓' : pct <= 30 ? '輕度緊張，屬正常' : '焦慮情緒較高，需關注';
+      return '';
+    }
+
+    // ── 渲染 AI 報告
+    function renderReport(report, emotionData, stats, emotionLogs) { // 🌟 加上 stats
+      const score = clamp(report.overall_score || 0);
+
+      // 評等大字
+      document.getElementById('scoreGrade').textContent = report.grade || 'B';
+      document.getElementById('scoreTitle').textContent = report.grade_title || '面試完成';
+      document.getElementById('scoreSubtitle').textContent = `綜合評分 ${score} / 100`;
+      if (score >= 75) document.getElementById('recommendBadge').style.display = 'inline-block';
+
+      // 🚀 抓取後端送來的真實數據
+      const avgs = stats?.averages || { tech: 70, comm: 68, logic: 72, learn: 65, stress: 66 };
+      const pcts = stats?.percentiles || { tech: 50, comm: 50, logic: 50, learn: 50, stress: 50 };
+
+      // ── 四維度分數 (將 AVERAGES 換成 avgs，並代入 pct)
+      const m = report.metrics || {};
+      const dims = [
+        { key: 'tech',  barId: 'bar-tech',  valId: 'm-tech',  pctId: 'pct-tech',  score: m.technical     || clamp(score * 1.04), avg: avgs.tech, pct: pcts.tech, color: '#1D9E75' },
+        { key: 'comm',  barId: 'bar-comm',  valId: 'm-comm',  pctId: 'pct-comm',  score: m.communication || clamp(score * 0.95), avg: avgs.comm, pct: pcts.comm, color: '#378ADD' },
+        { key: 'logic', barId: 'bar-logic', valId: 'm-logic', pctId: 'pct-logic', score: m.logic         || clamp(score * 0.98), avg: avgs.logic, pct: pcts.logic, color: '#534AB7' },
+        { key: 'learn', barId: 'bar-learn', valId: 'm-learn', pctId: 'pct-learn', score: m.learning      || clamp(score * 1.10), avg: avgs.learn, pct: pcts.learn, color: '#EF9F27' },
+      ];
+
+      dims.forEach(d => {
+        document.getElementById(d.valId).innerHTML = `${d.score} <small>/ 100</small>`;
+        const pl = pctLabel(d.score, d.avg, d.pct); // 🌟 這裡傳入 d.pct
+        const pctEl = document.getElementById(d.pctId);
+        pctEl.textContent = pl.text;
+        pctEl.className = `metric-percentile ${pl.cls}`;
+        setTimeout(() => {
+          document.getElementById(d.barId).style.width = d.score + '%';
+        }, 200);
+      });
+      document.getElementById('metrics-grid').style.display = 'grid';
+
+      // ── 雷達圖 (也把平均線換成真實數據)
+      const stressScore = m.stress || clamp(score * 0.92);
+      renderRadar(
+        [dims[0].score, dims[1].score, dims[2].score, dims[3].score, stressScore],
+        [avgs.tech, avgs.comm, avgs.logic, avgs.learn, avgs.stress] // 🌟 傳入真實平均陣列
+      );
+
+      if (emotionData) {
+        // 綁定眨眼次數
+        const blinkCount = emotionData.blink_count || 0;
+        document.getElementById('visual-blink-count').textContent = blinkCount;
+        if (blinkCount > 30) {
+           document.getElementById('visual-blink-note').innerHTML = `<span style="color:#e74c3c; font-weight:bold;">高頻眨眼：請注意放鬆心情</span>`;
+        } else {
+           document.getElementById('visual-blink-note').textContent = '眨眼頻率正常，表現沉穩';
+        }
+      }
+
+      // 🌟 3. 綁定你辛苦存入 Emotion_Logs 的最終判斷！
+      if (emotionLogs && emotionLogs.length > 0) {
+        // 取出最新的一筆總結資料
+        const finalLog = emotionLogs[emotionLogs.length - 1]; 
+        document.getElementById('visual-focus-score').textContent = finalLog.focus_score || '--';
+        document.getElementById('visual-final-emotion').textContent = finalLog.emotion || '平穩';
+        
+        // 如果是緊張，把標籤變橘色警告
+        if ((finalLog.emotion || '').includes('緊張')) {
+            document.getElementById('visual-final-emotion').style.color = '#e67e22';
+            document.getElementById('visual-final-emotion').style.background = 'rgba(230,126,34,0.1)';
+        }
+      }
+      // ── 情緒分析
+      // 優先使用後端 emotionData；否則從 report 推算
+      const joy = emotionData ? Math.round((emotionData.happy_ratio   || 0) * 100) : clamp(score * 0.75);
+      const neu = emotionData ? Math.round((emotionData.neutral_ratio || 0) * 100) : clamp((100 - score) * 0.55);
+      const anx = emotionData ? Math.round((emotionData.sad_ratio     || 0) * 100) : Math.max(0, 100 - joy - neu);
+
+      document.getElementById('emo-joy-val').textContent = joy + '%';
+      document.getElementById('emo-neu-val').textContent = neu + '%';
+      document.getElementById('emo-anx-val').textContent = anx + '%';
+      document.getElementById('emo-joy-note').textContent = emoNote(joy, 'joy');
+      document.getElementById('emo-neu-note').textContent = emoNote(neu, 'neu');
+      document.getElementById('emo-anx-note').textContent = emoNote(anx, 'anx');
+      setTimeout(() => {
+        document.getElementById('emo-joy').style.width = joy + '%';
+        document.getElementById('emo-neu').style.width = neu + '%';
+        document.getElementById('emo-anx').style.width = anx + '%';
+      }, 300);
+      document.getElementById('emotion-section').style.display = 'block';
+      // ── 百分位排名條 (傳入真實百分位)
+      renderPercentileBars([
+        { label: '技術能力', score: dims[0].score, avg: avgs.tech, pct: pcts.tech, color: '#1D9E75' },
+        { label: '溝通表達', score: dims[1].score, avg: avgs.comm, pct: pcts.comm, color: '#378ADD' },
+        { label: '邏輯思維', score: dims[2].score, avg: avgs.logic, pct: pcts.logic, color: '#534AB7' },
+        { label: '學習潛力', score: dims[3].score, avg: avgs.learn, pct: pcts.learn, color: '#EF9F27' },
+        { label: '抗壓表現', score: stressScore,   avg: avgs.stress, pct: pcts.stress, color: '#e67e22' },
+      ]);
+
+      // ── AI 總結
+      document.getElementById('result-report-content').textContent = report.summary || '無總結評語';
+
+      // ── 亮點 / 待觀察
+      document.getElementById('tag-highlights').innerHTML = (report.highlights || [])
+        .map(t => `<span class="tag tag-hl">${t}</span>`).join('');
+      document.getElementById('tag-concerns').innerHTML = (report.concerns || [])
+        .map(t => `<span class="tag tag-wn">${t}</span>`).join('');
+
+      // ── 問答
+      const qaContainer = document.getElementById('qa-container');
+      if (report.qa && report.qa.length > 0) {
+        qaContainer.innerHTML = report.qa.map((item, i) => {
+          // 夾值確保 0~10（prompt 已強制，這裡作最後保險）
+          let rawScore = Number(item.score) || 0;
+          const safeScore = Math.min(Math.max(Math.round(rawScore), 0), 10);
+          const pillCls = safeScore >= 8 ? 'pill-high' : safeScore >= 6 ? 'pill-mid' : 'pill-low';
+          return `
+            <div class="qa-item" onclick="toggleQA(this)">
+              <div class="qa-header">
+                <span class="qa-num">Q${i + 1}</span>
+                <span class="qa-q">${item.question}</span>
+                <span class="qa-score-pill ${pillCls}">${safeScore}/10</span>
+                <span class="qa-arrow">▾</span>
+              </div>
+              <div class="qa-answer">${item.feedback}</div>
+            </div>`;
+        }).join('');
+        document.getElementById('qa-card').style.display = 'block';
+      } else {
+        qaContainer.innerHTML = '<p style="color:#aaa; font-size:13px;">未解析出問答紀錄。</p>';
+        document.getElementById('qa-card').style.display = 'block';
+      }
+    }
+
+    // ── 雷達圖
+    let radarInstance = null;
+    function renderRadar(data) {
+      if (radarInstance) radarInstance.destroy();
+      radarInstance = new Chart(document.getElementById('radarChart'), {
+        type: 'radar',
+        data: {
+          labels: ['技術能力', '溝通表達', '邏輯思維', '學習潛力', '抗壓表現'],
+          datasets: [
+            {
+              label: '應徵者',
+              data: data,
+              backgroundColor: 'rgba(29,158,117,0.12)',
+              borderColor: '#1D9E75',
+              borderWidth: 1.8,
+              pointBackgroundColor: '#1D9E75',
+              pointRadius: 3.5,
+              pointHoverRadius: 5,
+            },
+            {
+              label: '平均值',
+              data: [AVERAGES.tech, AVERAGES.comm, AVERAGES.logic, AVERAGES.learn, AVERAGES.stress],
+              backgroundColor: 'rgba(0,0,0,0)',
+              borderColor: 'rgba(0,0,0,0.15)',
+              borderWidth: 1,
+              borderDash: [4, 3],
+              pointRadius: 0,
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: { enabled: true }
+          },
+          scales: {
+            r: {
+              min: 0, max: 100,
+              ticks: { display: false, stepSize: 25 },
+              grid: { color: 'rgba(0,0,0,0.07)' },
+              angleLines: { color: 'rgba(0,0,0,0.07)' },
+              pointLabels: {
+                font: { size: 11, family: 'inherit' },
+                color: '#888'
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // ── 百分位排名視覺條
+    function renderPercentileBars(items) {
+      const container = document.getElementById('pct-rows-container');
+      container.innerHTML = items.map(item => {
+        const pct = item.pct; // 🌟 直接用後端算好的真實排名
+        const avgPct = 50; // 平均值永遠在畫面正中央 (50%)
+        const isUp = pct > 53;
+        const pctClass = isUp ? 'pct-up' : pct < 47 ? 'pct-down' : 'pct-mid';
+        const pctText = `前 ${Math.max(1, 100 - pct)}%`;
+        return `
+          <div class="pct-row">
+            <div class="pct-dim">${item.label}</div>
+            <div class="pct-track">
+              <div class="pct-fill" data-width="${pct}"
+                style="background:${item.color}; width:0%; position:relative;">
+              </div>
+              <div class="pct-marker-avg" style="left:50%;"></div>
+            </div>
+            <div class="pct-value ${pctClass}">${pctText}</div>
+          </div>`;
+      }).join('');
+
+      // 動畫
+      setTimeout(() => {
+        container.querySelectorAll('.pct-fill').forEach(el => {
+          el.style.transition = 'width 1s cubic-bezier(.4,0,.2,1)';
+          el.style.width = el.dataset.width + '%';
+        });
+      }, 400);
+
+      document.getElementById('percentile-section').style.display = 'block';
+    }
+
+    // ── 問答展開/收合
+    function toggleQA(item) {
+      const answer = item.querySelector('.qa-answer');
+      const arrow  = item.querySelector('.qa-arrow');
+      const isOpen = item.classList.toggle('open');
+      answer.style.maxHeight = isOpen ? answer.scrollHeight + 'px' : '0';
+      arrow.textContent = isOpen ? '▴' : '▾';
+    }
+
+    // ── 主載入流程
+    async function loadAllData() {
+      showLoading(true);
+      try {
+        const urlParams  = new URLSearchParams(window.location.search);
+        const sessionId  = urlParams.get('session_id');
+        if (!sessionId) throw new Error('網址列缺少 session_id');
+
+        // 1. 並行取得履歷 + 逐字稿 + 情緒日誌
+        const [resResume, resTranscript, resEmotion] = await Promise.all([
+          fetch(`/api/resume?session_id=${sessionId}`),
+          fetch(`/api/transcript?session_id=${sessionId}`),
+          fetch(`/api/emotion?session_id=${sessionId}`).catch(() => null), // 情緒 API 可選
+        ]);
+
+        if (!resResume.ok)     throw new Error('履歷資料讀取失敗');
+        if (!resTranscript.ok) throw new Error('找不到該場次對話紀錄');
+
+        const resumeData    = await resResume.json();
+        const transcriptData = await resTranscript.json();
+        const emotionData   = resEmotion?.ok ? await resEmotion.json() : null;
+
+        renderResume(resumeData);
+        document.getElementById('report-error').style.display = 'none';
+        document.getElementById('result-report-content').innerHTML =
+          `<div style="text-align:center; padding:28px; color:#1D9E75;">
+             <b>🧠 AI 正在深度分析這場面試...</b><br>
+             <span style="font-size:13px; color:#999;">（大約需要 10 ~ 20 秒）</span>
+           </div>`;
+
+        // 2. 請求 AI 報告（loading 保持顯示直到報告渲染完）
+        const aiRes = await fetch(`/api/report?session_id=${sessionId}`);
+        if (!aiRes.ok) throw new Error('AI 報告讀取失敗');
+
+        const responseData = await aiRes.json();
+        const reportObj = responseData.report || responseData;
+
+        if (!reportObj || typeof reportObj !== 'object' || reportObj.overall_score === undefined) {
+          throw new Error('AI 報告格式異常（overall_score 缺失），請重新整理頁面再試一次');
+        }
+
+        const finalEmotionData = (emotionData && emotionData.data) || emotionData || responseData.emotionData || null;
+        const finalEmotionLogs = (emotionData && emotionData.logs) || emotionData?.emotionLogs || responseData.emotionLogs || [];
+
+        renderReport(reportObj, responseData.emotionData || null, responseData.stats || null, responseData.emotionLogs || []);
+        showLoading(false);
+
+      } catch (err) {
+        console.error('處理失敗：', err);
+        document.getElementById('report-error').style.display = 'block';
+        document.getElementById('report-error').textContent = `讀取或分析失敗：${err.message}`;
+        document.getElementById('result-report-content').textContent = '';
+        showLoading(false);
+      }
+    }
+
+    // ── 匯出 PDF（呼叫後端或瀏覽器列印）
+    document.getElementById('btn-export-pdf').addEventListener('click', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const sessionId = urlParams.get('session_id');
+      // 若有後端 PDF 路由可替換為 fetch；否則用瀏覽器列印
+      window.print();
+    });
+
+    // ── 啟動
+    window.addEventListener('DOMContentLoaded', loadAllData);
+  </script>
+</body>
+</html>
