@@ -362,6 +362,15 @@ function setupWebSocket(server) {
 
             hrWs.on('message', (data) => handleAiResponse('HR', data));
             managerWs.on('message', (data) => handleAiResponse('MANAGER', data));
+
+            // 🌟 保活機制：避免還沒輪到的那條線（通常是還在等 HR 問完的主管連線）
+            // 因為完全沒有資料流動而在背後悄悄失效，導致真正輪到它/被真人插話後恢復時反應異常慢。
+            // 每 20 秒用 WebSocket 原生 ping frame 戳一下，不會觸發 Gemini 生成任何內容。
+            const keepAliveInterval = setInterval(() => {
+                if (isInterviewEnded) { clearInterval(keepAliveInterval); return; }
+                if (hrWs && hrWs.readyState === WebSocket.OPEN) hrWs.ping();
+                if (managerWs && managerWs.readyState === WebSocket.OPEN) managerWs.ping();
+            }, 20000);
         };
 
         clientWs.on('message', async (msg) => {
@@ -436,6 +445,9 @@ function setupWebSocket(server) {
                 if (parsedMsg.customType === 'execute_backend_resume') {
                     console.log(`▶️ [求職者連線] 真正執行：解開 AI 的封印`);
                     currentInterviewer = previousInterviewer;
+
+                    // 🔍 診斷用：確認要恢復的這條 Gemini 連線，狀態到底是不是 OPEN
+                    console.log(`🔍 [診斷] 準備恢復角色：${currentInterviewer} | hrWs狀態:${hrWs ? hrWs.readyState : 'null'} | managerWs狀態:${managerWs ? managerWs.readyState : 'null'} (0=CONNECTING 1=OPEN 2=CLOSING 3=CLOSED)`);
 
                     const resumeMsg = JSON.stringify({ clientContent: { turns: [{ role: "user", parts: [{ text: `[系統指令] 真人面試官已結束插話對話。請你直接繼續你原本的面試流程，提出下一個問題。` }] }], turnComplete: true } });
                     if (currentInterviewer === 'HR' && hrWs && hrWs.readyState === WebSocket.OPEN) hrWs.send(resumeMsg);
@@ -546,6 +558,7 @@ function setupWebSocket(server) {
         clientWs.on('close', async () => {
             if (hrFlushTimeout) clearTimeout(hrFlushTimeout);
             if (managerFlushTimeout) clearTimeout(managerFlushTimeout);
+            clearInterval(keepAliveInterval);
             console.log('🔴 [前端] 已斷線，啟動存檔...');
             await saveToDatabase();
             if (hrWs) hrWs.close();
