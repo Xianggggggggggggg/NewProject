@@ -881,6 +881,21 @@ async function handleEndInterview() {
     window.location.href = `finish.html`;
 }
 
+// ==========================================
+// 🌟 防幽靈房間：當應徵者直接關閉瀏覽器分頁時，強制通知後端結束面試
+// ==========================================
+window.addEventListener('beforeunload', () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        // 臨死前發送最後一封 WebSocket 廣播，叫後端馬上存檔並把房間改成「已結束」
+        ws.send(JSON.stringify({ 
+            customType: 'execute_backend_pause' // 先讓 AI 閉嘴
+        }));
+        
+        // 強制關閉連線，這會立刻觸發後端 websocket.js 的 clientWs.on('close') 去執行 saveToDatabase()
+        ws.close(); 
+    }
+});
+
 window.addEventListener('load', () => {
     initAntiCheatSystem();
 

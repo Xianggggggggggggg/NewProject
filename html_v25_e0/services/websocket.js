@@ -89,6 +89,8 @@ function setupWebSocket(server) {
                         let speakerName = '應徵者';
                         if (item.role === 'ai_HR') speakerName = 'HR 面試官';
                         if (item.role === 'ai_MANAGER') speakerName = '部門主管';
+
+                        if (item.role === 'human_HR') speakerName = '真人面試官';
                         return `${speakerName}：${item.content}`;
                     })
                     .join('\n\n');

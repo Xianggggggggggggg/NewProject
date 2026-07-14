@@ -471,7 +471,7 @@ function resetSilenceTimer() {
                 title.style.color = "var(--text-main)";
             }
         }
-    }, 1500); // 4000毫秒 = 4秒
+    }, 4000); // 4000毫秒 = 4秒
 }
 
 // ==========================================
