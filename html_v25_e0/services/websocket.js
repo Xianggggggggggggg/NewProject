@@ -89,8 +89,6 @@ function setupWebSocket(server) {
                         let speakerName = '應徵者';
                         if (item.role === 'ai_HR') speakerName = 'HR 面試官';
                         if (item.role === 'ai_MANAGER') speakerName = '部門主管';
-
-                        if (item.role === 'human_HR') speakerName = '真人面試官';
                         return `${speakerName}：${item.content}`;
                     })
                     .join('\n\n');
@@ -364,15 +362,6 @@ function setupWebSocket(server) {
 
             hrWs.on('message', (data) => handleAiResponse('HR', data));
             managerWs.on('message', (data) => handleAiResponse('MANAGER', data));
-
-            // 🌟 保活機制：避免還沒輪到的那條線（通常是還在等 HR 問完的主管連線）
-            // 因為完全沒有資料流動而在背後悄悄失效，導致真正輪到它/被真人插話後恢復時反應異常慢。
-            // 每 20 秒用 WebSocket 原生 ping frame 戳一下，不會觸發 Gemini 生成任何內容。
-            const keepAliveInterval = setInterval(() => {
-                if (isInterviewEnded) { clearInterval(keepAliveInterval); return; }
-                if (hrWs && hrWs.readyState === WebSocket.OPEN) hrWs.ping();
-                if (managerWs && managerWs.readyState === WebSocket.OPEN) managerWs.ping();
-            }, 20000);
         };
 
         clientWs.on('message', async (msg) => {
@@ -483,6 +472,7 @@ function setupWebSocket(server) {
                 // ==========================================
                 if (parsedMsg.type === 'hr_human_speech') {
                     console.log(`🎤 [真人插話文字] ${parsedMsg.text}`);
+
                     const textMsg = JSON.stringify({
                         customType: 'ai_transcript_final',
                         ai_role: '真人HR',
@@ -560,7 +550,6 @@ function setupWebSocket(server) {
         clientWs.on('close', async () => {
             if (hrFlushTimeout) clearTimeout(hrFlushTimeout);
             if (managerFlushTimeout) clearTimeout(managerFlushTimeout);
-            clearInterval(keepAliveInterval);
             console.log('🔴 [前端] 已斷線，啟動存檔...');
             await saveToDatabase();
             if (hrWs) hrWs.close();
