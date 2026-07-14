@@ -102,6 +102,20 @@ if ('webkitSpeechRecognition' in window) {
     };
 }
 
+// ==========================================
+// 🌟 應徵者關閉/離開面試分頁時，主動通知後端結束場次
+// ==========================================
+// WebSocket 的 close 事件不一定可靠(伺服器重啟、網路瞬斷、筆電直接闔上都可能漏接)，
+// sendBeacon 是瀏覽器專門設計「頁面關閉那一刻仍保證送出」的 API，當作雙重保險。
+window.addEventListener('pagehide', () => {
+    if (window.currentSessionId) {
+        navigator.sendBeacon(
+            '/api/company/end-session',
+            JSON.stringify({ sessionId: window.currentSessionId })
+        );
+    }
+});
+
 document.addEventListener('DOMContentLoaded', () => {
     ['aiModel_HR', 'aiModel_Tech'].forEach(id => {
         const model = document.getElementById(id);
@@ -880,21 +894,6 @@ async function handleEndInterview() {
     const sessionId = urlParams.get('session_id');
     window.location.href = `finish.html`;
 }
-
-// ==========================================
-// 🌟 防幽靈房間：當應徵者直接關閉瀏覽器分頁時，強制通知後端結束面試
-// ==========================================
-window.addEventListener('beforeunload', () => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        // 臨死前發送最後一封 WebSocket 廣播，叫後端馬上存檔並把房間改成「已結束」
-        ws.send(JSON.stringify({ 
-            customType: 'execute_backend_pause' // 先讓 AI 閉嘴
-        }));
-        
-        // 強制關閉連線，這會立刻觸發後端 websocket.js 的 clientWs.on('close') 去執行 saveToDatabase()
-        ws.close(); 
-    }
-});
 
 window.addEventListener('load', () => {
     initAntiCheatSystem();
