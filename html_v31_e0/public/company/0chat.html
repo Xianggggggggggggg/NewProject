@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HR 訊息中心 - CareerLab</title>
+
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="../css/0company.css">
+  <link rel="stylesheet" href="../css/0chat.css">
+</head>
+
+<body>
+  <div id="topbar-container"></div>
+  <div id="sidebar-container"></div>
+
+  <div class="section-container active" style="padding:30px;">
+    <div class="history-layout">
+
+      <!-- 左側：面試者列表 -->
+      <div class="timeline-section">
+        <div class="section-title">
+          👥 面試者列表
+        </div>
+
+        <div id="hr-contact-list">
+          <div class="empty-state">
+            正在載入面試者...
+          </div>
+        </div>
+      </div>
+
+      <!-- 右側：聊天室 -->
+      <div class="message-section">
+
+        <div class="section-title">
+          💬 HR 訊息中心
+        </div>
+
+        <div class="chat-header" id="hr-chat-title">
+          請選擇一位面試者
+        </div>
+
+        <div class="chat-messages" id="hr-chat-messages">
+          <div class="empty-state">
+            選擇面試者後即可開始對話
+          </div>
+        </div>
+
+        <div class="chat-input-area">
+          <input
+            id="hr-chat-input"
+            type="text"
+            placeholder="請先選擇面試者"
+            autocomplete="off"
+            disabled
+          >
+
+          <button
+            id="hr-chat-send"
+            type="button"
+            disabled
+          >
+            傳送
+          </button>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+
+  <script src="../js/0company.js" defer></script>
+
+</body>
+</html>

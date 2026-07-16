@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>登入 - CareerLab</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="section-container active" id="login-section" style="justify-content: center; align-items: center; display: flex;">
+    <div class="logo-text">CareerLab</div>
+    <div class="auth-box glass-panel">
+      <input type="text" id="username" placeholder="使用者帳號">
+      
+      <!-- 1. 加入相對定位的容器，用來包裝密碼與眼睛按鈕 -->
+      <div style="position: relative; width: 100%;">
+        <input type="password" id="password" placeholder="密碼" style="width: 100%; padding-right: 50px; margin-bottom: 0; box-sizing: border-box;">
+        <!-- 眼睛按鈕 (絕對定位在右側) -->
+        <!-- 顯示/隱藏 按鈕 (已拿掉粗體，並統一字體與大小) -->
+        <button type="button" id="toggle-pwd-btn" onclick="togglePasswordVisibility()" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 14px; font-weight: normal; font-family: inherit; color: var(--text-sub);">
+          顯示
+        </button>
+      </div>
+      
+      <!-- 為了補足原本 input 的下邊距 -->
+      <div style="height: 15px;"></div>
+
+      <div class="btn-row">
+        <button class="btn-green" onclick="handleLogin()">登入</button>
+        <!-- 2. 將訪客登入替換為忘記密碼 -->
+        <button class="btn-glass" onclick="forgotPassword()">忘記密碼</button>
+      </div>
+      <div class="divider">OR</div>
+      <button class="btn-glass btn-register" onclick="openRegisterModal()">註冊新帳號</button>
+    </div>
+  </div>
+
+  <div id="register-modal-overlay" class="modal-overlay">
+    <div class="register-modal">
+      <h2>註冊帳號</h2><p>建立你的專屬面試帳號</p>
+      <input type="text" id="reg-name" class="reg-input" placeholder="名字">
+      <input type="text" id="reg-username" class="reg-input" placeholder="帳號名 (登入用)">
+      <input type="email" id="reg-email" class="reg-input" placeholder="Email (選填)">
+      <input type="password" id="reg-password" class="reg-input" placeholder="密碼">
+      <input type="password" id="reg-confirm" class="reg-input" placeholder="確認密碼">
+      <button class="btn-reg-submit" onclick="handleRegisterSubmit()">註冊</button>
+      <div style="margin-top: 15px; font-size: 13px; color: var(--text-sub);">
+        <input type="checkbox" id="agree-terms" onclick="return false;" style="transform: translateY(2px); accent-color: var(--primary-green); cursor: not-allowed; width: 16px; height: 16px;">
+        <label>
+          我已閱讀並同意 <a href="#" onclick="openTermsModal(); return false;" style="color: var(--primary-green); font-weight: bold; text-decoration: underline;">個人資料提供同意書</a>
+        </label>
+      </div>
+      <a class="back-link" onclick="closeRegisterModal()" style="margin-top: 30px;">回登入頁</a>
+    </div>
+  </div>
+  <div id="terms-modal-overlay" class="modal-overlay">
+    <div class="register-modal" style="max-width: 650px; text-align: left; padding: 30px 40px;">
+      <h2 style="color: var(--primary-green); margin-bottom: 20px; text-align: center; font-size: 24px;">個人資料提供同意書</h2>
+      
+      <div style="width: 100%; height: 400px; margin-bottom: 25px; border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden;">
+        <iframe src="個人資料提供同意書.pdf" width="100%" height="100%" style="border: none;"></iframe>
+      </div>
+
+      <p style="color: #e67e22; font-weight: bold; text-align: center; margin-bottom: 20px;">
+        點擊下方按鈕，即代表我已詳閱本同意書，瞭解並同意受同意書之拘束。
+      </p>
+
+      <div style="display: flex; gap: 15px;">
+        <button class="btn-glass" style="flex: 1; padding: 14px;" onclick="closeTermsModal()">取消</button>
+        <button class="btn-green" style="flex: 2; padding: 14px;" onclick="agreeTerms()">我已詳細閱讀並同意</button>
+      </div>
+    </div>
+  </div>
+  <script src="js/app.js" defer></script>
+</body>
+</html>
