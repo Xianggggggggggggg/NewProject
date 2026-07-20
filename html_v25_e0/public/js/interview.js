@@ -102,6 +102,20 @@ if ('webkitSpeechRecognition' in window) {
     };
 }
 
+// ==========================================
+// 🌟 應徵者關閉/離開面試分頁時，主動通知後端結束場次
+// ==========================================
+// WebSocket 的 close 事件不一定可靠(伺服器重啟、網路瞬斷、筆電直接闔上都可能漏接)，
+// sendBeacon 是瀏覽器專門設計「頁面關閉那一刻仍保證送出」的 API，當作雙重保險。
+window.addEventListener('pagehide', () => {
+    if (window.currentSessionId) {
+        navigator.sendBeacon(
+            '/api/company/end-session',
+            JSON.stringify({ sessionId: window.currentSessionId })
+        );
+    }
+});
+
 document.addEventListener('DOMContentLoaded', () => {
     ['aiModel_HR', 'aiModel_Tech'].forEach(id => {
         const model = document.getElementById(id);
