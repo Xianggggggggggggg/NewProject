@@ -89,33 +89,6 @@ router.get('/active-sessions', async (req, res) => {
     }
 });
 
-// 🌟 應徵者關閉面試分頁時，用 sendBeacon 主動通知結束場次 (WebSocket close 的雙重保險)
-// sendBeacon 送出的是 text/plain，body 需要自己 JSON.parse
-router.post('/end-session', express.text({ type: '*/*' }), async (req, res) => {
-    try {
-        let sessionId;
-        try {
-            sessionId = JSON.parse(req.body).sessionId;
-        } catch (e) {
-            sessionId = null;
-        }
-        if (!sessionId) return res.status(400).json({ success: false, error: '缺少 sessionId' });
-
-        // 只更新目前還是「進行中」的場次，避免覆蓋掉已經正常結束、已有評分結果的場次
-        const { error } = await supabaseAdmin
-            .from('interview_sessions')
-            .update({ status: '已結束', end_time: new Date().toISOString() })
-            .eq('session_id', sessionId)
-            .eq('status', '進行中');
-
-        if (error) throw error;
-        res.json({ success: true });
-    } catch (err) {
-        console.error('結束場次失敗:', err);
-        res.status(500).json({ success: false, error: err.message });
-    }
-});
-
 // 👇 下面接著你原本的 router.get('/applicants', ...)
 
 router.get('/applicants', async (req, res) => {
