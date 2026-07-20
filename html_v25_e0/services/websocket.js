@@ -44,8 +44,8 @@ function setupWebSocket(server) {
         let hrPendingAction = null;    // 紀錄人資講完話後要執行的動作 ('HANDOVER_TO_HUMAN' 或 'FORCE_END')
 
         // 🎯 目標題數
-        let hrtargetCount = 3;
-        let managertargetCount = 4;
+        let hrtargetCount = 4;
+        let managertargetCount = 5;
 
         // 🛠️ 組員給 HR 用的交接工具
         const hrTools = [{
@@ -119,7 +119,7 @@ function setupWebSocket(server) {
                 
                 【核心任務】：
                 1. 負責面試開場，熱情地歡迎應徵者，並請他先簡單自我介紹。
-                2. 針對履歷與自我介紹，提出「行為面試問題」（例如：團隊合作、壓力處理），後續也適時依據面試者「回答」進行回復。
+                2. 針對履歷與自我介紹問問題，並根據我的回答，追問有關文化適應、離職原因（若有工作經歷）、職涯動機或團隊合作的問題。
                 3. 每次發言【只能問一個問題】！
                 4. 你的對話對象「只有」應徵者，絕對不要與部門主管對話。
                 5. 【對話節奏控制】：
@@ -129,8 +129,7 @@ function setupWebSocket(server) {
                 
                 【交接規則 (極度重要)】：
                 1. 在你尚未收到系統要求交接的指令前，請持續提問。
-                2. 當系統發送強制指令要求你交棒時，請你講出這句標準台詞：「了解，謝謝你的分享。接下來的技術與專業問題，我想交給部門主管來瞭解。」
-
+                2. 當系統發送強制指令要求你交棒時，請不要提問，做簡短回饋就好。
                 【🚨 系統強制限制】：絕對不要輸出任何「動作描述」！禁止輸出如「(點頭)」、「(保持沉默)」等字眼。
                 
                 應徵者履歷資料：\n${resumeText}
@@ -149,7 +148,8 @@ function setupWebSocket(server) {
                 1. 系統一開始不會給你聲音。當你收到「HR 已經交棒給你」的系統指令時，請立刻用語音開口。
                 2. 🌟 針對下方的【本職缺詳細需求】以及應徵者的【履歷資料】或【回覆】，提出「高度相關」的專業技術問題。
                    - 如果職缺要求特定語言或框架，不可詢問不相關的技術（如 C++ 或單純前端切版）。
-                   - 請測驗候選人是否具備勝任此職缺的實際技術能力，著重實務經驗與解決問題的思路。                3. 每次發言【一次只能問一個問題】！絕對不可以一次丟出兩個以上的問號，問完立刻閉嘴等對方回答。
+                   - 請測驗候選人是否具備勝任此職缺的實際技術能力，著重實務經驗與解決問題的思路。
+                3. 🌟 非常重要！！每次發言【一次只能問一個問題】！
                 4. 你的對話對象「只有」應徵者，絕對不要與 HR 對話。   
                 5. 【對話節奏控制】：
                 - 當你請應徵者自我介紹或回答問題時，如果對方只回答「好」、「沒問題」、「嗯嗯」等簡短的確認語氣，請理解為他們正在思考或準備開口。
@@ -158,7 +158,7 @@ function setupWebSocket(server) {
 
                 【交接規則 (極度重要)】：
                 1. 在你尚未收到系統要求交接的指令前，請持續提問。
-                2. 當系統發送強制指令要求你交棒時，請你講出這句標準台詞：「我的部分問完了，交還給人資。」
+                2. 當系統發送強制指令要求你交棒時，請不要提問，做簡短回饋就好。
 
                 【🚨 系統強制限制】：絕對不要輸出任何「動作描述」！禁止輸出如「(保持沉默)」等字眼。
                 
@@ -193,9 +193,30 @@ function setupWebSocket(server) {
             });
 
             const handleAiResponse = (role, data) => {
-                if (isInterviewEnded) return;
                 const response = JSON.parse(data.toString());
 
+                // 🌟 攔截 AI 的函式呼叫
+                if (response.serverContent?.modelTurn?.parts) {
+                    const parts = response.serverContent.modelTurn.parts;
+                    const functionCallPart = parts.find(p => p.functionCall);
+                    if (functionCallPart) {
+                        const toolResponseMsg = JSON.stringify({
+                            toolResponse: {
+                                functionResponses: [{
+                                    id: functionCallPart.functionCall.id || "",
+                                    name: functionCallPart.functionCall.name,
+                                    response: { result: "success", status: "ok" }
+                                }]
+                            }
+                        });
+                        if (role === 'HR') hrWs.send(toolResponseMsg);
+                        else managerWs.send(toolResponseMsg);
+                    }
+                }
+
+                if (isInterviewEnded) return;
+
+/*
                 // 🎬 組員寫的專屬交接函數 (後端發動)
                 const executeHandover = (targetRole) => {
                     console.log(`🚀 [系統強制介入] 啟動 ${targetRole} 的交接函數`);
@@ -208,7 +229,7 @@ function setupWebSocket(server) {
                         const strictPrompt = `[系統指令] 你的階段提問任務已完成，準備交接。請先判斷應徵者最後的回答：1. 如果是有意義的內容，請給予 1 句話的自然回饋。2. 如果是無意義短句或亂碼，請「完全忽略」。判斷完後，請務必直接朗讀這句交接台詞：「好的，謝謝你的說明。我的部分問完了，交還給人資。」絕對不可再問新問題。`;
                         if (managerWs && managerWs.readyState === WebSocket.OPEN) managerWs.send(JSON.stringify({ realtimeInput: { text: strictPrompt } }));
                     }
-                };
+                }; */
 
                 if (response.setupComplete && role === 'HR') {
                     clientWs.send(JSON.stringify({ setupComplete: true }));
@@ -272,7 +293,7 @@ function setupWebSocket(server) {
                                         if (c.readyState === WebSocket.OPEN && c.sessionId === currentSessionId) c.send(aiMsg);
                                     });
                                 }
-
+                                const isSystemWarning = finalSentence.includes('小提醒') || finalSentence.includes('視窗') || finalSentence.includes('停留');
                                 const isRealQuestion = (finalSentence.includes('？') || finalSentence.includes('?')) && finalSentence.length > 10;
 
                                 // 📊 組員的狀態機與題數控制
@@ -303,6 +324,7 @@ function setupWebSocket(server) {
                                 // 🔄 主管交還給 HR
                                 if (role === 'MANAGER' && isManagerWrappingUp && currentInterviewer === 'MANAGER') {
                                     if (finalSentence.includes('交還') || finalSentence.includes('人資')) {
+                                        if (currentInterviewer === 'HANDOVER') return;
                                         console.log('🔄 [權限切換] 部門主管唸出交接台詞，準備交還給：人資');
                                         currentInterviewer = 'HANDOVER'; // 鎖住麥克風防干擾
                                         isManagerWrappingUp = false;
@@ -339,24 +361,72 @@ function setupWebSocket(server) {
                                 }
                             }
                         }
-                            if (role === 'HR') hrSpeechBuffer = ""; else managerSpeechBuffer = "";
-                        }, 1000);
+                        if (role === 'HR') hrSpeechBuffer = ""; else managerSpeechBuffer = "";
+                    }, 2000);
 
                     if (role === 'HR') hrFlushTimeout = newTimeout; else managerFlushTimeout = newTimeout;
                 }
 
                 if (response.serverContent?.inputTranscription && currentInterviewer === role) {
                     let userText = convert(response.serverContent.inputTranscription.text).replace(/\s+/g, '');
-                    userText = userText.replace(/^[,，]+/, '').replace(/[,，]{2,}/g, '，');
                     addLog("user", userText, "speech");
+
+                    // 1. 廣播給前端 (這部分維持現狀，確保對話紀錄即時更新)
                     const userMsg = JSON.stringify({ customType: 'user_transcript', text: userText });
                     wss.clients.forEach(c => {
                         if (c.readyState === WebSocket.OPEN && c.sessionId === currentSessionId) c.send(userMsg);
                     });
 
+                    // 2. [預先注入策略] 檢查是否為最後一題，實施「攔截與重組」
+                    const isTargetReached =
+                        (role === 'HR' && hrSpeakCount >= hrtargetCount && !isHRWrappingUp) ||
+                        (role === 'MANAGER' && managerSpeakCount >= managertargetCount && !isManagerWrappingUp);
+
+                    if (isTargetReached) {
+                        console.log(`🚀 [預先注入] 觸發攔截與重組：準備轉場 (${role})`);
+
+                        // 🌟 額外保險：一進來立刻把狀態切為 true，下一微秒的串流文字就會直接被上面的 isTargetReached 擋掉
+                        if (role === 'HR') isHRWrappingUp = true;
+                        else isManagerWrappingUp = true;
+
+                        const lastAiSpeech = role === 'HR' ? hrSpeechBuffer : managerSpeechBuffer;
+                        const cleanLastSpeech = lastAiSpeech.split(/[。！？]/).filter(s => s.trim().length > 5).pop() || "這確實很有價值。";
+
+                        if (role === 'HR') hrSpeechBuffer = "";
+                        else managerSpeechBuffer = "";
+                        const handoverLine = role === 'HR'
+                            ? "謝謝你的分享。接下來的技術與專業問題，我想交給部門主管來瞭解。"
+                            : "謝謝你的說明。我的部分問完了，交還給人資。";
+
+                        // 🌟 核心修改：移除呼叫 function 的指令，改為純文字的強制語音輸出
+                        const injectionPrompt = `
+                            [系統核心指令] 
+                            1. 應徵者回答："${userText}"
+                            2. 你剛剛提到："${cleanLastSpeech}"。請針對應徵者的內容，順著你剛才的話，給予一句自然的總結回饋。
+                            3. 回饋後，【必須】立即朗讀這句台詞：「${handoverLine}」。
+                            4. 執行完上述動作後，絕對禁止詢問任何新問題，並保持安靜。
+                        `;
+
+                        const injectionMsg = {
+                            clientContent: {
+                                turns: [{ role: "user", parts: [{ text: injectionPrompt }] }],
+                                turnComplete: true
+                            }
+                        };
+
+                        if (role === 'HR') {
+                            isHRWrappingUp = true;
+                            hrWs.send(JSON.stringify(injectionMsg));
+                        } else {
+                            isManagerWrappingUp = true;
+                            managerWs.send(JSON.stringify(injectionMsg));
+                        }
+                        return;
+                    }
+
                     // 🎯 只要達標，觸發組員寫的交接函數
-                    if (role === 'HR' && hrSpeakCount >= hrtargetCount && !isHRWrappingUp) executeHandover('HR');
-                    if (role === 'MANAGER' && managerSpeakCount >= managertargetCount && !isManagerWrappingUp) executeHandover('MANAGER');
+                    //if (role === 'HR' && hrSpeakCount >= hrtargetCount && !isHRWrappingUp) executeHandover('HR');
+                    //if (role === 'MANAGER' && managerSpeakCount >= managertargetCount && !isManagerWrappingUp) executeHandover('MANAGER');
                 }
             };
 
@@ -414,7 +484,26 @@ function setupWebSocket(server) {
                     });
                     return;
                 }
+                // ==========================================
+                // 🌟 團體面試專用：廣播 PeerJS ID 讓大家自動連線
+                // ==========================================
+                if (parsedMsg.type === 'join_group_room') {
+                    console.log(`👥 [團體面試] 新人加入房間 [${parsedMsg.sessionId}], PeerID: ${parsedMsg.peerId}`);
 
+                    // 把這個使用者的 PeerID 綁定到他的 WebSocket 連線物件上
+                    clientWs.peerId = parsedMsg.peerId;
+
+                    // 廣播給同一個房間裡的「其他人」：有新人來了，快打給他！
+                    wss.clients.forEach(client => {
+                        if (client !== clientWs && client.readyState === WebSocket.OPEN && client.sessionId === parsedMsg.sessionId) {
+                            client.send(JSON.stringify({
+                                type: 'user_joined_group',
+                                newPeerId: parsedMsg.peerId
+                            }));
+                        }
+                    });
+                    return;
+                }
                 // ==========================================
                 // 🌟 求職者專屬連線接收端 (真正在後端拔掉 AI 網路線的地方)
                 // ==========================================

@@ -7,7 +7,7 @@ const server = http.createServer(app);
 
 // 1. 設定靜態檔案與 JSON 解析 (對應你的 public 資料夾)
 // 👇 加入 { index: 'lobby.html' } 參數，指定大廳為預設首頁
-app.use(express.static('public', { index: 'lobby.html' })); 
+app.use(express.static('public', { index: 'user/lobby.html' }));
 app.use(express.json());
 
 // 2. 掛載 API 路由 (報告產出)
