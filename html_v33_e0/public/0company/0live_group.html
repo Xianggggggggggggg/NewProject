@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<!-- 引進 PeerJS SDK -->
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<!-- 引入我們專為團面寫的 JS -->
+<script src="0js/0live_group.js" defer></script>
+<head>
+  <meta charset="UTF-8">
+  <title>真人戰情室 - CareerLab</title>
+  <link rel="stylesheet" href="../user/css/style.css">
+  <!-- 讓團面專屬的 css 放在下面，確保排版不會被舊版蓋掉 -->
+  <link rel="stylesheet" href="../user/css/group_interview.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+</head>
+
+<body>
+  
+  <!-- 🌟 關鍵修改：將大廳的 ID 綁定在外層的 section-container 上 -->
+  <div id="room-selection-view" class="section-container active" style="padding-top: 30px;">
+      <h2 style="color: var(--primary-green); margin-bottom: 20px;">🔴 真人面試戰情室 大廳</h2>
+      <p style="color: var(--text-sub); margin-bottom: 20px; font-size: 16px;">請選擇正在進行中的面試場次以進行潛入：</p>
+      <div id="active-sessions-list" style="max-width: 800px;">
+          <div style="color: #888; text-align: center; padding: 30px;">⏳ 正在搜尋進行中的面試...</div>
+      </div>
+  </div>
+
+  <div id="video-room-view" style="display: none;">
+      
+      <div class="layout-wrapper">
+          
+          <!-- 左側視訊區 -->
+          <div class="video-section">
+              
+              <!-- 💡 按鈕被收進狀態列 (status-bar) 裡面 -->
+              <div class="status-bar" style="display: flex; justify-content: space-between; align-items: center; padding: 8px 20px; background: rgba(255,255,255,0.8); border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 15px;">
+                  <span id="current-room-title" style="font-weight: bold; color: var(--primary-green);">潛入房間：載入中...</span>
+                  <div style="display: flex; gap: 10px;">
+                      <button id="startCallBtn" class="btn-green" style="padding: 6px 15px; border-radius: 20px; border: none; cursor: pointer; font-size: 14px;" onclick="startHumanInterview()">🚀 開啟鏡頭</button>
+                      <button id="toggleCamBtn" style="background:#2c3e50; color:white; padding: 6px 15px; border-radius: 20px; border: none; cursor: pointer; font-size: 14px;" onclick="toggleCamera()">📹 關閉鏡頭</button>
+                      <button id="toggleMicBtn" style="background:#c0392b; color:white; padding: 6px 15px; border-radius: 20px; border: none; cursor: pointer; font-size: 14px;" onclick="toggleMic()">🔇 關閉麥克風</button>
+                      <button style="background:#e0e0e0; color:#333; padding: 6px 15px; border-radius: 20px; border: none; cursor: pointer; font-size: 14px;" onclick="window.location.href='0live.html'">🚪 離開</button>
+                  </div>
+              </div>
+
+              <!-- 上方考官席 (三劍客) -->
+              <div class="ai-stage">
+                  <div class="ai-box glass-panel">
+                      <video id="aiModel_Tech" class="video-avatar active" src="../men.mp4" autoplay loop muted playsinline></video>
+                      <div class="ai-label">🤖 AI 技術主管</div>
+                  </div>
+                  
+                  <div class="ai-box glass-panel">
+                      <video id="aiModel_HR" class="video-avatar active" src="../women.mp4" autoplay loop muted playsinline></video>
+                      <div class="ai-label">👩‍💼 AI 人資 (HR)</div>
+                  </div>
+
+                  <!-- 💡 HR 畫面填滿且左右鏡像 -->
+                  <div class="ai-box glass-panel" style="background: #2d3436;">
+                      <video id="localHrVideo" class="video-avatar active" autoplay muted playsinline style="transform: scaleX(-1);"></video>
+                      <div class="ai-label" style="background: rgba(45, 52, 54, 0.8);">👤 真人面試官 (您)</div>
+                  </div>
+              </div>
+
+              <!-- 下方應徵者九宮格 -->
+              <div class="section-title">— 參與面試的應徵者 —</div>
+              
+              <!-- 🌟 讓 CSS 自動排版的乾淨容器 -->
+              <div id="video-grid">
+              </div>
+          </div>
+
+          <!-- 右側對話區 -->
+          <div class="chat-section glass-panel">
+              <div class="chat-header">💬 即時對話紀錄</div>
+              <div id="transcriptBox">
+                  <div class="ai-msg">
+                      等待面試對話開始...
+                  </div>
+              </div>
+          </div>
+          
+      </div>
+  </div>
+
+  <script src="0js/0company.js" defer></script> 
+</body>
+</html>
