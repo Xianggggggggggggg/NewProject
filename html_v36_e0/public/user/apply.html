@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>職缺詳情 - CareerLab</title>
+  <link rel="stylesheet" href="/user/css/style.css">
+</head>
+<body>
+  <div id="topbar-container"></div>
+  <div id="sidebar-container"></div>
+
+<div class="section-container active" style="align-items: center;" id="job-detail-container">
+  <div
+    style="width: 100%; max-width: 1000px; display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 30px;">
+    <div>
+      <button class="btn-glass" style="padding: 5px 15px; margin-bottom: 20px;"
+        onclick="window.location.href='lobby.html'">← 返回大廳</button>
+
+      <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 5px;">
+        <div style="font-size: 18px; color: var(--primary-green); font-weight: bold;" id="job-dept">載入中...</div>
+        <div style="font-size: 13px; color: var(--text-sub);" id="job-updated-at">--/-- 更新</div>
+      </div>
+
+      <div style="font-size: 36px; font-weight: bold; color: var(--text-main); margin-bottom: 10px;" id="job-title">
+        載入中...</div>
+      <div style="font-size: 24px; color: #d9534f; font-weight: bold;" id="job-salary"></div>
+    </div>
+
+    <div style="display: flex; gap: 15px; align-items: center; margin-top: 45px;">
+      <div style="font-size: 30px; cursor: pointer; color: #ccc; transition: 0.3s;" title="儲存職缺"
+        onmouseover="this.style.color='#f1c40f'" onmouseout="this.style.color='#ccc'">🔖</div>
+      <button class="btn-green" style="padding: 15px 40px; font-size: 20px;" onclick="handleApplyAction()">投遞履歷</button>
+    </div>
+  </div>
+
+  <div class="glass-panel"
+    style="width: 100%; max-width: 1000px; padding: 50px; text-align: left; box-sizing: border-box;">
+
+    <div class="detail-section">
+      <h3>工作內容</h3>
+      <p id="job-desc" style="white-space: pre-wrap; margin-bottom: 30px;">載入中...</p>
+
+      <div class="job-info-list">
+
+        <div class="info-row">
+          <div class="info-label">工作性質</div>
+          <div class="info-value" id="job-type">載入中...</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">上班地點</div>
+          <div class="info-value" id="job-address">載入中...</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">管理責任</div>
+          <div class="info-value" id="job-manage">載入中...</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">出差外派</div>
+          <div class="info-value" id="job-travel">載入中...</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">上班時段</div>
+          <div class="info-value" id="job-time">載入中...</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">休假制度</div>
+          <div class="info-value" id="job-leave">載入中...</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">可上班日</div>
+          <div class="info-value" id="job-startdate">載入中...</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">需求人數</div>
+          <div class="info-value" id="job-count">載入中...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <h3>條件要求</h3>
+      <div class="job-info-list">
+        <div class="info-row">
+          <div class="info-label">工作經歷</div>
+          <div class="info-value" id="job-exp">載入中...</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">學歷要求</div>
+          <div class="info-value" id="job-edu">載入中...</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">科系要求</div>
+          <div class="info-value" id="job-major">載入中...</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">語文條件</div>
+          <div class="info-value" id="job-lang">載入中...</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">擅長工具</div>
+          <div class="info-value" id="job-tools">載入中...</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">工作技能</div>
+          <div class="info-value" id="job-skills">載入中...</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">其他條件</div>
+          <div class="info-value" id="job-req" style="white-space: pre-wrap;">載入中...</div>
+        </div>
+      </div>
+    </div>
+
+<div class="detail-section" style="margin-bottom: 0;">
+  <h3>福利制度</h3>
+  <div id="job-benefits-container">載入中...</div>
+</div>
+  </div>
+</div>
+
+  <script src="/user/js/app.js" defer></script>
+</body>
+</html>
