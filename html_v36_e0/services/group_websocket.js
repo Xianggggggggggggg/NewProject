@@ -427,7 +427,7 @@ function setupGroupWebSocket(options) {
                 if (parsedMsg.type === 'webrtc_offer' ||
                     parsedMsg.type === 'webrtc_answer' ||
                     parsedMsg.type === 'webrtc_ice_candidate' ||
-                    parsedMsg.type === 'human_hr_joined') {
+                    parsedMsg.type === 'hr_joined_group') {
 
                     isHumanPresent = true;
                     console.log(`📡 [多人WebRTC] 房號 [${parsedMsg.sessionId}] 轉發訊號: ${parsedMsg.type}`);
