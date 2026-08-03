@@ -119,7 +119,7 @@ async function fetchActiveSessions() {
 // ==========================================
 function setupWebSocket() {
     const backendUrl = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost'
-        ? 'ws://localhost:3001' : `wss://${window.location.host}`;
+        ? 'ws://localhost:3001/ws/group' : `wss://${window.location.host}`;
     ws = new WebSocket(backendUrl);
 
     ws.onopen = () => {
