@@ -333,7 +333,7 @@ async function startGroupInterview() {
 
         // 初始化 PeerJS
         // 把原本空空的 new Peer() 換成這樣：
-        const myPeer = new Peer({
+        myPeer = new Peer({
         config: {
             'iceServers': [
             { url: 'stun:stun.l.google.com:19302' },

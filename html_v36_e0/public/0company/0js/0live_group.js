@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ==========================================
 function initPeerJS() {
     // 把原本空空的 new Peer() 換成這樣：
-    const myPeer = new Peer({
+    myPeer = new Peer({
     config: {
         'iceServers': [
         { url: 'stun:stun.l.google.com:19302' },
@@ -215,4 +215,41 @@ function toggleMic() {
         // 開啟時變成綠色提醒自己正在收音
         btn.style.background = audioTrack.enabled ? "#27ae60" : "#c0392b"; 
     }
+}
+
+function appendTranscript(role, text, ai_role = 'HR') {
+    if (!text.trim()) return;
+    const box = document.getElementById('transcriptBox');
+    if (!box) return;
+
+    const msgDiv = document.createElement('div');
+    msgDiv.className = role === 'ai' ? 'ai-msg' : 'user-msg';
+    msgDiv.style.margin = "10px 0";
+    msgDiv.style.padding = "10px";
+    msgDiv.style.borderRadius = "8px";
+
+    if (role === 'ai') {
+        if (ai_role === '真人HR') {
+            msgDiv.style.backgroundColor = "#fff3e0";
+            msgDiv.style.color = "#d35400";
+            msgDiv.style.border = "1px solid #ffe0b2";
+            msgDiv.innerText = '🕵️ 真人面試官：\n' + text;
+        } else if (ai_role === 'HR') {
+            msgDiv.style.backgroundColor = "#f0f0f0";
+            msgDiv.style.color = "#333";
+            msgDiv.innerText = '👩‍💼 人資 (HR)：\n' + text;
+        } else {
+            msgDiv.style.backgroundColor = "#ffebee";
+            msgDiv.style.color = "#c62828";
+            msgDiv.innerText = '👨‍💻 部門主管：\n' + text;
+        }
+        msgDiv.style.textAlign = "left";
+    } else {
+        msgDiv.style.backgroundColor = "#e8f0fe";
+        msgDiv.style.color = "#1a73e8";
+        msgDiv.style.textAlign = "right";
+        msgDiv.innerText = '👤 你：\n' + text;
+    }
+    box.appendChild(msgDiv);
+    box.scrollTop = box.scrollHeight;
 }
