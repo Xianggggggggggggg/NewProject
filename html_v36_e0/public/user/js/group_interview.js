@@ -332,7 +332,15 @@ async function startGroupInterview() {
         ws = new WebSocket(backendUrl);
 
         // 初始化 PeerJS
-        myPeer = new Peer();
+        // 把原本空空的 new Peer() 換成這樣：
+        const myPeer = new Peer({
+        config: {
+            'iceServers': [
+            { url: 'stun:stun.l.google.com:19302' },
+            { url: 'stun:stun1.l.google.com:19302' }
+            ]
+        }
+        });
 
         myPeer.on('open', id => {
             const statusText = document.getElementById('status-text');
