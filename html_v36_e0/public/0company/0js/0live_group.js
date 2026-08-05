@@ -248,7 +248,7 @@ function appendTranscript(role, text, ai_role = 'HR') {
         msgDiv.style.backgroundColor = "#e8f0fe";
         msgDiv.style.color = "#1a73e8";
         msgDiv.style.textAlign = "right";
-        msgDiv.innerText = '👤 你：\n' + text;
+        msgDiv.innerText = '👤 應徵者：\n' + text;
     }
     box.appendChild(msgDiv);
     box.scrollTop = box.scrollHeight;
