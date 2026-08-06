@@ -211,9 +211,24 @@ function toggleMic() {
     
     if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
-        btn.innerText = audioTrack.enabled ? "🔇 關閉麥克風" : "🎙️ 開啟麥克風";
-        // 開啟時變成綠色提醒自己正在收音
-        btn.style.background = audioTrack.enabled ? "#27ae60" : "#c0392b"; 
+        
+        if (audioTrack.enabled) {
+            btn.innerText = "🔇 關閉麥克風";
+            btn.style.background = "#27ae60"; 
+            // 🌟 麥克風打開時，啟動語音轉文字
+            if (hrRecognition) {
+                try { hrRecognition.start(); } catch(e) {}
+                console.log("🎤 麥克風與語音辨識已開啟");
+            }
+        } else {
+            btn.innerText = "🎙️ 開啟麥克風";
+            btn.style.background = "#c0392b"; 
+            // 🌟 麥克風關閉時，停止語音轉文字
+            if (hrRecognition) {
+                try { hrRecognition.stop(); } catch(e) {}
+                console.log("🔇 麥克風與語音辨識已暫停");
+            }
+        }
     }
 }
 
@@ -252,4 +267,37 @@ function appendTranscript(role, text, ai_role = 'HR') {
     }
     box.appendChild(msgDiv);
     box.scrollTop = box.scrollHeight;
+}
+
+// ==========================================
+// 🌟 戰情室專屬：語音轉文字引擎
+// ==========================================
+let hrRecognition = null;
+
+if ('webkitSpeechRecognition' in window) {
+    hrRecognition = new webkitSpeechRecognition();
+    hrRecognition.continuous = true;
+    hrRecognition.interimResults = false;
+    hrRecognition.lang = 'zh-TW';
+
+    hrRecognition.onresult = (event) => {
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+                const text = event.results[i][0].transcript.trim();
+                if (text && ws && ws.readyState === WebSocket.OPEN) {
+                    // 將文字傳給後端廣播
+                    ws.send(JSON.stringify({ type: 'hr_human_speech', text: text, sessionId: targetSessionId }));
+                }
+            }
+        }
+    };
+    
+    // 確保麥克風沒關時，聽寫員不小心睡著要叫醒他
+    hrRecognition.onend = () => {
+        const btn = document.getElementById('toggleMicBtn');
+        // 依照你原本的 UI，如果是開啟狀態，按鈕應該是顯示 "🔇 關閉麥克風"
+        if (btn && btn.innerText.includes('關閉麥克風') && hrRecognition) {
+            try { hrRecognition.start(); } catch(e){}
+        }
+    };
 }
