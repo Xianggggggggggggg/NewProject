@@ -55,7 +55,19 @@
                     <div class="ai-label" style="background: rgba(45, 52, 54, 0.8);" id="hr-label">👤 真人面試官</div>
                 </div>
             </div>
-
+            <!-- ========================================== -->
+            <!-- 🌟 應徵者本機設備控制面板 (新增) -->
+            <!-- ========================================== -->
+            <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 15px; background: rgba(255,255,255,0.8); padding: 8px; border-radius: 8px;">
+                <button id="toggleAppCamBtn" onclick="toggleApplicantCamera()" style="background: #2c3e50; color: white; padding: 6px 15px; border-radius: 20px; border: none; cursor: pointer; font-size: 14px; font-weight: bold; transition: background 0.2s;">
+                    📹 關閉鏡頭
+                </button>
+                <button id="toggleAppMicBtn" onclick="toggleApplicantMic()" style="background: #27ae60; color: white; padding: 6px 15px; border-radius: 20px; border: none; cursor: pointer; font-size: 14px; font-weight: bold; transition: background 0.2s;">
+                    🔇 關閉麥克風
+                </button>
+            </div>
+            <!-- ========================================== -->
+            <div class="section-title">— 參與面試的應徵者 —</div>
             <div class="section-title">— 參與面試的應徵者 —</div>
             <!-- 💡 這裡放所有應徵者（包含自己與其他對手）的視訊 -->
             <div id="video-grid"></div>

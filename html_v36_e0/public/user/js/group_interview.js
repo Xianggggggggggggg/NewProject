@@ -609,7 +609,62 @@ function revertToPlaceholderHR() {
     const alertDiv = document.getElementById('human-join-alert');
     if (alertDiv) alertDiv.remove();
 }
+// ==========================================
+// 7. 應徵者設備控制 (開關麥克風/鏡頭)
+// ==========================================
+function toggleApplicantCamera() {
+    if (!myStream) {
+        console.warn("尚未取得媒體串流，無法控制鏡頭");
+        return;
+    }
+    // 抓取本人的影像軌道
+    const videoTrack = myStream.getVideoTracks()[0];
+    const btn = document.getElementById('toggleAppCamBtn'); // 假設 HTML 按鈕 ID 是這個
+    
+    if (videoTrack) {
+        // 切換開關狀態 (true 變 false，false 變 true)
+        videoTrack.enabled = !videoTrack.enabled;
+        
+        // 更新按鈕外觀與顏色 (使用跟你戰情室類似的風格)
+        if (btn) {
+            if (videoTrack.enabled) {
+                btn.innerText = "📹 關閉鏡頭";
+                btn.style.background = "#2c3e50"; // 開啟時的深藍色
+            } else {
+                btn.innerText = "🚫 開啟鏡頭";
+                btn.style.background = "#c0392b"; // 關閉時的紅色
+            }
+        }
+        console.log(`🎥 應徵者本機鏡頭狀態: ${videoTrack.enabled ? 'ON' : 'OFF'}`);
+    }
+}
 
+function toggleApplicantMic() {
+    if (!myStream) {
+        console.warn("尚未取得媒體串流，無法控制麥克風");
+        return;
+    }
+    // 抓取本人的音訊軌道
+    const audioTrack = myStream.getAudioTracks()[0];
+    const btn = document.getElementById('toggleAppMicBtn'); // 假設 HTML 按鈕 ID 是這個
+    
+    if (audioTrack) {
+        // 切換開關狀態
+        audioTrack.enabled = !audioTrack.enabled;
+        
+        // 更新按鈕外觀與顏色
+        if (btn) {
+            if (audioTrack.enabled) {
+                btn.innerText = "🔇 關閉麥克風";
+                btn.style.background = "#27ae60"; // 開啟時顯示綠色 (提醒自己正在收音)
+            } else {
+                btn.innerText = "🎙️ 開啟麥克風";
+                btn.style.background = "#c0392b"; // 關閉時顯示紅色
+            }
+        }
+        console.log(`🎤 應徵者本機麥克風狀態: ${audioTrack.enabled ? 'ON' : 'OFF'}`);
+    }
+}
 // ==========================================
 // 6. 頁面載入綁定按鈕監聽
 // ==========================================

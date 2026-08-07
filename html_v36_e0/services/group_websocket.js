@@ -503,6 +503,28 @@ function setupGroupWebSocket(options) {
                     addLog("human_HR", parsedMsg.text, "speech");
                     return;
                 }
+                // ==========================================
+                // 🌟 接收應徵者在「暫停期間」講的話 (備用打字員傳來的)
+                // ==========================================
+                if (parsedMsg.customType === 'user_human_speech') {
+                    console.log(`🎤 [應徵者插話文字] ${parsedMsg.text}`);
+
+                    const textMsg = JSON.stringify({
+                        customType: 'user_transcript', // 標記為應徵者講的話
+                        text: parsedMsg.text
+                    });
+
+                    // 廣播給房間裡的所有人（包含戰情室）
+                    wss.clients.forEach(c => {
+                        if (c.readyState === WebSocket.OPEN && c.sessionId === parsedMsg.sessionId) {
+                            c.send(textMsg);
+                        }
+                    });
+
+                    // 存入對話紀錄
+                    addLog("user", parsedMsg.text, "speech");
+                    return;
+                }
 
                 // ==========================================
                 // 🌟 初始化「多人團體面試」
