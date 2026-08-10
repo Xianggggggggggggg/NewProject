@@ -343,7 +343,7 @@ router.get('/history', async (req, res) => {
     try {
         const { data: sessions, error: sessionErr } = await supabase
             .from('interview_sessions')
-            .select('session_id, applied_position, interview_type, status, start_time, resume_id') // 👈 補上 resume_id
+            .select('session_id, applied_position, interview_type, status, start_time, resume_id, room_id') // 👈 補上 resume_id 和 room_id
             .eq('applicant_id', user.id)
             .order('start_time', { ascending: false });
             
@@ -388,12 +388,14 @@ router.get('/history', async (req, res) => {
 
             return {
                 session_id: s.session_id, 
+                resume_id: s.resume_id, // 🌟 補上這一行！這是消滅 undefined 的關鍵！
                 position: s.applied_position, 
                 type: s.interview_type, 
                 status: s.status,
                 date: new Date(s.start_time).toLocaleDateString('zh-TW'),
                 score: gradeText,
-                feedback: feedbackText
+                feedback: feedbackText,
+                room_id: s.room_id
             };
         });
         

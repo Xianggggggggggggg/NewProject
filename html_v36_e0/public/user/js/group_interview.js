@@ -45,6 +45,7 @@ let activeSources = [];
 let isEyeClosed = false;
 
 window.isAIPaused = false;
+window.aiPhaseFinished = false;
 window.audioAnimationQueue = [];
 window.currentAiRole = 'HR';
 
@@ -66,7 +67,7 @@ if ('webkitSpeechRecognition' in window) {
         }
     };
     userRecognition.onend = () => {
-        if (window.isAIPaused && userRecognition) {
+        if ((window.isAIPaused || window.aiPhaseFinished) && userRecognition) {
             try { userRecognition.start(); } catch (e) { }
         }
     };
@@ -161,7 +162,8 @@ function setupFaceMesh() {
 // 3. UI 與音訊播放控制
 // ==========================================
 function appendTranscript(role, text, ai_role = 'HR') {
-    if (!text.trim()) return;
+    if (typeof text !== 'string' || !text.trim()) return;
+
     const box = document.getElementById('transcriptBox');
     if (!box) return;
 
@@ -334,12 +336,12 @@ async function startGroupInterview() {
         // 初始化 PeerJS
         // 把原本空空的 new Peer() 換成這樣：
         myPeer = new Peer({
-        config: {
-            'iceServers': [
-            { url: 'stun:stun.l.google.com:19302' },
-            { url: 'stun:stun1.l.google.com:19302' }
-            ]
-        }
+            config: {
+                'iceServers': [
+                    { url: 'stun:stun.l.google.com:19302' },
+                    { url: 'stun:stun1.l.google.com:19302' }
+                ]
+            }
         });
 
         myPeer.on('open', id => {
@@ -360,7 +362,8 @@ async function startGroupInterview() {
                     sessionId: TARGET_SESSION_ID,
                     candidateIds: RESUME_ID ? [RESUME_ID] : [], // 配合後端解構的 candidateIds
                     position: POSITION,
-                    interview_type: INTERVIEW_TYPE                }));
+                    interview_type: INTERVIEW_TYPE
+                }));
             }
         });
 
@@ -424,8 +427,20 @@ async function startGroupInterview() {
             }
 
             // 🟢 D. AI 狀態與對話串流處理
-            if (data.setupComplete) isSetupComplete = true;
+            if (data.setupComplete) {
+                isSetupComplete = true;
+                console.log("✅ [AI] Setup Complete，開始接收使用者語音");
+            }
+            if (data.customType === 'ai_phase_finished') {
+                window.aiPhaseFinished = true;
 
+                console.log("🏁 AI 面試結束，繼續保留麥克風與語音文字紀錄");
+
+                // ⭐ AI 結束後開始用瀏覽器語音辨識記錄應徵者
+                if (userRecognition) {
+                    try { userRecognition.start(); } catch (e) { }
+                }
+            }
             if (data.customType === 'kill_ai_audio') {
                 window.isAIPaused = true;
                 stopAllAudio();
@@ -477,6 +492,10 @@ async function startGroupInterview() {
         processor = audioContext.createScriptProcessor(4096, 1, 1);
 
         processor.onaudioprocess = (e) => {
+            console.log("🎤 [麥克風] onaudioprocess 觸發", {
+                wsReady: ws?.readyState,
+                isSetupComplete
+            });
             if (ws && ws.readyState === WebSocket.OPEN && isSetupComplete) {
                 const inputData = e.inputBuffer.getChannelData(0);
                 let rms = 0;
@@ -493,10 +512,20 @@ async function startGroupInterview() {
                 }
 
                 const base64Audio = btoa(String.fromCharCode.apply(null, new Uint8Array(pcmData.buffer)));
-                ws.send(JSON.stringify({
-                    realtimeInput: { audio: { mimeType: "audio/pcm;rate=16000", data: base64Audio } }
-                }));
-            }
+                console.log("📤 [語音] 正在傳送 PCM 到後端", {
+                    sessionId: window.currentSessionId,
+                    rms: rms,
+                    isMainSpeaker: isMainSpeaker
+                });
+                    ws.send(JSON.stringify({
+                        sessionId: window.currentSessionId,
+                        realtimeInput: {
+                            audio: {
+                                mimeType: "audio/pcm;rate=16000",
+                                data: base64Audio
+                            }
+                        }
+                    }));            }
         };
 
         const sourceNode = audioContext.createMediaStreamSource(stream);
@@ -620,11 +649,11 @@ function toggleApplicantCamera() {
     // 抓取本人的影像軌道
     const videoTrack = myStream.getVideoTracks()[0];
     const btn = document.getElementById('toggleAppCamBtn'); // 假設 HTML 按鈕 ID 是這個
-    
+
     if (videoTrack) {
         // 切換開關狀態 (true 變 false，false 變 true)
         videoTrack.enabled = !videoTrack.enabled;
-        
+
         // 更新按鈕外觀與顏色 (使用跟你戰情室類似的風格)
         if (btn) {
             if (videoTrack.enabled) {
@@ -647,11 +676,11 @@ function toggleApplicantMic() {
     // 抓取本人的音訊軌道
     const audioTrack = myStream.getAudioTracks()[0];
     const btn = document.getElementById('toggleAppMicBtn'); // 假設 HTML 按鈕 ID 是這個
-    
+
     if (audioTrack) {
         // 切換開關狀態
         audioTrack.enabled = !audioTrack.enabled;
-        
+
         // 更新按鈕外觀與顏色
         if (btn) {
             if (audioTrack.enabled) {
@@ -676,3 +705,73 @@ window.addEventListener('load', () => {
         }, { once: true });
     }
 });
+
+// ==========================================
+// 8. 面試結束與成績上傳邏輯
+// ==========================================
+async function uploadInterviewResult(sessionId, analysisData) {
+    try {
+        console.log("⏳ 準備同步情緒與專注度資料至 Supabase...");
+
+        let finalEmotion = "平穩";
+        const hasValidData = (analysisData.emotion_anxiety > 0 || analysisData.emotion_joy > 0 || analysisData.emotion_neutral > 0);
+
+        if (!hasValidData) {
+            finalEmotion = "未偵測到人臉 (或鏡頭被遮蔽)";
+        } else if (analysisData.emotion_anxiety > 0.25 || analysisData.blink_count > 25) {
+            finalEmotion = "略顯緊張";
+        } else if (analysisData.emotion_joy > 0.3) {
+            finalEmotion = "自信開朗";
+        } else if (analysisData.emotion_neutral > 0.5) {
+            finalEmotion = "沉穩專業";
+        }
+
+        let finalConfidenceScore = hasValidData ? analysisData.confidence_score : 0;
+        let finalFeedback = hasValidData ? "面試表現平穩。" : "系統於面試過程中無法有效偵測到人臉特徵。";
+
+        // 🌟 直接呼叫你原本寫好的後端 API！
+        const response = await fetch('/api/interview-result', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: sessionId,
+                finalEmotion,
+                finalFeedback,
+                finalConfidenceScore,
+                analysisData
+            })
+        });
+
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error);
+
+        console.log(`✅ 面試結果已完整上傳！最終判定情緒：【${finalEmotion}】`);
+    } catch (err) {
+        console.error('❌ 上傳失敗：', err.message);
+    }
+}
+
+async function endInterview() {
+    if (!confirm('確定要結束這場團體面試嗎？')) return;
+
+    // 1. 關閉本機視訊鏡頭與麥克風
+    if (myStream) {
+        myStream.getTracks().forEach(track => track.stop());
+    }
+
+    // 2. 告訴 WebSocket 伺服器我離開了
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'user_left_group', sessionId: window.currentSessionId }));
+        ws.close();
+    }
+
+    // 3. 顯示過場動畫並上傳資料
+    if (window.currentSessionId && window.interviewSessionData) {
+        document.body.innerHTML = '<h2 style="text-align:center; margin-top: 20vh; color: var(--primary-green);">⏳ 面試資料結算中，請稍候...</h2>';
+        await uploadInterviewResult(window.currentSessionId, window.interviewSessionData);
+    }
+
+    // 4. 跳轉回歷史紀錄頁面查看報告
+    alert('面試已順利結束！報告將在稍後生成。');
+    window.location.href = '/user/chat.html';
+}

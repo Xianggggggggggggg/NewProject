@@ -10,6 +10,7 @@ const GEMINI_WS_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.gene
 
 // 🌟 記憶體中管理所有房間的成員與狀態
 const groupRooms = new Map();
+const activeRooms = new Map();
 
 function setupGroupWebSocket(options) {
     const wss = new WebSocket.Server(options);
@@ -19,35 +20,9 @@ function setupGroupWebSocket(options) {
 
     wss.on('connection', (clientWs) => {
         console.log('\n🟢 [前端] 已連線 (多人 AI 面試官 websocket)');
+        console.log("連線建立，目前有", wss.clients.size, "個客戶端連線中");
 
         let currentSessionId = null;
-        let interviewData = { transcript: [] };
-
-        // 🌟 核心控制變數
-        let currentInterviewer = 'HR';
-        let isInterviewEnded = false;
-        let isAiSpeaking = false;
-        let previousInterviewer = 'HR';
-        let isHumanPresent = false;
-
-        let hrWs = null;
-        let managerWs = null;
-
-        let hrSpeechBuffer = "";
-        let managerSpeechBuffer = "";
-        let hrFlushTimeout = null;
-        let managerFlushTimeout = null;
-
-        // 🎯 多人面試題數與輪流狀態
-        let hrRoundCount = 0;          // HR 已完成幾輪問題 (每輪包含所有人)
-        let managerRoundCount = 0;     // 主管已完成幾輪問題
-        let hrTargetRounds = 2;        // HR 預計問幾輪 (每人皆答)
-        let managerTargetRounds = 3;   // 主管預計問幾輪 (每人皆答)
-
-        let isHRWrappingUp = false;
-        let isManagerWrappingUp = false;
-        let isFinalStage = false;
-        let hrPendingAction = null;
 
         // 🛠️ 工具宣告
         const hrTools = [{
@@ -64,9 +39,11 @@ function setupGroupWebSocket(options) {
             }]
         }];
 
-        const addLog = (role, text, type = "speech") => {
-            if (!text || text.trim().length === 0) return;
-            interviewData.transcript.push({
+        const addLog = (sessionId, role, text, type = "speech") => {
+            const room = activeRooms.get(sessionId);
+            if (!room || !room.transcript) return;
+
+            room.transcript.push({
                 timestamp: new Date().toISOString(),
                 role: role,
                 type: type,
@@ -77,13 +54,15 @@ function setupGroupWebSocket(options) {
         const saveToDatabase = async () => {
             try {
                 if (!currentSessionId) return;
+                const room = activeRooms.get(currentSessionId);
+                if (!room || !room.transcript) return;
 
                 const { error: updateErr } = await supabase.from('interview_sessions')
                     .update({ status: '已結束', end_time: new Date().toISOString() })
                     .eq('session_id', currentSessionId);
                 if (updateErr) throw updateErr;
 
-                const fullConversationLog = interviewData.transcript
+                const fullConversationLog = room.transcript
                     .filter(item => item.type === "speech")
                     .map(item => {
                         let speakerName = '應徵者';
@@ -101,37 +80,56 @@ function setupGroupWebSocket(options) {
                 if (insertErr) throw insertErr;
 
                 console.log(`✅ 多人面試已完美存檔 (Session: ${currentSessionId})`);
+                activeRooms.delete(currentSessionId);
             } catch (err) { console.error('❌ 寫入資料庫失敗:', err.message); }
         };
 
-        // 🌟 多人 Prompt 設定與 Gemini 啟動
-        const startGroupGeminiConnections = (candidatesInfoText, candidatesList, position, interview_type, jobDetailsText, companyContext) => {
+        const startGroupGeminiConnections = (roomState, candidatesInfoText, candidatesList, position, interview_type, jobDetailsText, companyContext) => {
+            // 1. 初始化連線並存入 roomState
+            roomState.hrWs = new WebSocket(GEMINI_WS_URL);
+            roomState.managerWs = new WebSocket(GEMINI_WS_URL);
 
+            // 2. 將所有狀態集中管理於 roomState，確保多人共享同一份狀態
+            roomState.currentInterviewer = 'HR';
+            roomState.isInterviewEnded = false;
+            roomState.hrRoundCount = 0;
+            roomState.managerRoundCount = 0;
+            roomState.isHRWrappingUp = false;
+            roomState.isManagerWrappingUp = false;
+            roomState.isFinalStage = false;
+            roomState.hrPendingAction = null;
+            roomState.hrSpeechBuffer = "";
+            roomState.managerSpeechBuffer = "";
+            roomState.hrFlushTimeout = null;
+            roomState.managerFlushTimeout = null;
+
+            // (Prompt 設定維持原樣...)
             const candidatesNamesStr = candidatesList.map(c => c.name).join('、');
+            const orderedNamesList = candidatesList.map((c, i) => `${i + 1}. ${c.name}`).join('\n');
+            const totalCandidates = candidatesList.length;
 
             const hrPrompt = `
                 你現在正進行一場【多人團體面試】，應徵職缺為「${position}」。
-                本次面試的應徵者共有以下成員：${candidatesNamesStr}。
+                本次面試的應徵者共有 ${totalCandidates} 位，固定順序與名單如下（絕對不可隨意跳號）：
+                ${orderedNamesList}
                 
                 【企業背景設定】：
                 ${companyContext}
 
                 【人格設定】：你是資深 HR 面試官。語氣專業、親切、控場能力強。
                 
-                【核心任務與多人規則 (極度重要)】：
+                【核心任務與絕對穩定規則 (極度重要)】：
                 1. 負責團體面試開場，熱情歡迎大家。
-                2. 🌟 **必須點名**：因為是多人面試，你每次提問【務必明確指定一位應徵者的名字】（例如：「請張小明先進行自我介紹」、「接下來想請李美麗回答...」）。
-                3. 開場的自我介紹階段，你必須【讓每位應徵者都依序進行自我介紹】後，才能進入下一個問題。
-                4. 針對履歷與回答追問團隊合作、職涯動機或文化適應。
-                5. 每次發言【只能問一個問題】且【只能指定一個人回答】！
-                6. 你的對話對象只有現場的應徵者們，絕對不要與部門主管對話。
-
-                【對話節奏控制】：
-                - 如果被點名的應徵者回答簡短或需要準備，請友善鼓勵：「沒問題，準備好隨時可以開始喔！」
-                - 若明確表示不知道，自然切換或邀請下一位：「沒關係，那我們聽聽看其他人的想法...」
+                2. 🌟 **「所有人回答同一題」輪流機制**：
+                   - 每次你提出一個問題時，**必須依序指定名單中的人「一個一個回答」同一道題目**。
+                   - 例如：先問「請第 1 位 [${candidatesList[0]?.name}] 回答這個問題...」，等他回答完後，再問「接下來請第 2 位 [${candidatesList[1]?.name || ''}] 針對同一題發表看法」，以此類推，直到名單內所有人都在這道題發言完畢。
+                   - 當所有人都在這一題回答完後，你才能提出「下一個新問題」，並再次從第 1 位開始依序點名！
+                3. **禁止亂跳與搶答**：絕對不允許開放自由搶答，也絕對不能跳號。
+                4. 每次發言【只能問一個問題】且【只能指定一個人】。
+                5. 你的對話對象只有現場的應徵者們，絕對不要與部門主管對話。
 
                 【交接規則】：
-                - 在尚未收到系統交接指令前，請持續點名提問。收到指令後，做簡短回饋並做過場交接。
+                - 在尚未收到系統交接指令前，請持續按照上述規則進行。收到指令後，做簡短回饋並做過場交接。
                 - 絕對不要輸出任何「動作描述」（如 (點頭)）。
 
                 【所有應徵者履歷資訊】：
@@ -143,22 +141,24 @@ function setupGroupWebSocket(options) {
 
             const managerPrompt = `
                 你現在正進行一場【多人團體面試】，應徵職缺為「${position}」，面試類型：${interview_type}。
-                本次面試的應徵者共有以下成員：${candidatesNamesStr}。
+                本次面試的應徵者共有 ${totalCandidates} 位，固定順序與名單如下（絕對不可隨意跳號）：
+                ${orderedNamesList}
                 
                 【企業背景設定】：
                 ${companyContext}
 
                 【人格設定】：你是部門技術主管。語氣嚴謹、實事求是。
                 
-                【核心任務與多人規則 (極度重要)】：
+                【核心任務與絕對穩定規則 (極度重要)】：
                 1. 當收到「HR 已經交棒給你」的系統指令時，立刻用語音開口。
-                2. 🌟 **必須點名**：針對【本職缺需求】與【應徵者履歷】，提問專業技術問題。每次提問【務必明確指定一位應徵者的名字】。
-                3. 確保問題公平分派給不同的應徵者，測試大家的技術實力與解決問題思路。
-                4. 每次發言【一次只能問一個問題】且【只能指定一個人回答】！
-                5. 絕對不要與 HR 對話。
+                2. 🌟 **「所有人回答同一題」輪流機制**：
+                   - 針對技術問題，提出一個專業考題後，**必須依序指定名單中的人「一個一個回答」同一道題目**。
+                   - 必須等第 1 位講完 $\rightarrow$ 換第 2 位講同一題 $\rightarrow$ 以此類推，直到所有人輪完這題，才能出下一題。
+                3. 禁止搶答與亂跳號。每次發言【一次只能問一個問題】且【只能指定一個人回答】。
+                4. 絕對不要與 HR 對話。
 
                 【交接規則】：
-                - 未收到交接指令前持續點名提問。收到指令後不提問，做簡短總結並交還 HR。
+                - 未收到交接指令前持續依序點名提問。收到指令後不提問，做簡短總結並交還 HR。
                 - 絕對不要輸出任何「動作描述」。
 
                 【所有應徵者履歷資訊】：
@@ -168,255 +168,483 @@ function setupGroupWebSocket(options) {
                 ${jobDetailsText}
             `;
 
-            hrWs = new WebSocket(GEMINI_WS_URL);
-            hrWs.on('open', () => {
-                hrWs.send(JSON.stringify({
+            roomState.hrWs.on('open', () => {
+                roomState.hrWs.send(JSON.stringify({
                     setup: {
                         model: MODEL_NAME,
                         systemInstruction: { parts: [{ text: hrPrompt }] },
                         tools: hrTools,
                         generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } } },
-                        realtime_input_config: { automatic_activity_detection: { silence_duration_ms: 3000 } }
+                        inputAudioTranscription: {},
+                        outputAudioTranscription: {},
+
+                        realtimeInputConfig: {
+                            automaticActivityDetection: {
+                                silenceDurationMs: 5000
+} }
                     }
                 }));
             });
 
-            managerWs = new WebSocket(GEMINI_WS_URL);
-            managerWs.on('open', () => {
-                managerWs.send(JSON.stringify({
+            roomState.managerWs.on('open', () => {
+                roomState.managerWs.send(JSON.stringify({
                     setup: {
                         model: MODEL_NAME,
                         systemInstruction: { parts: [{ text: managerPrompt }] },
                         tools: managerTools,
                         generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Enceladus" } } } },
-                        realtime_input_config: { automatic_activity_detection: { silence_duration_ms: 3000 } }
+                        inputAudioTranscription: {},
+                        outputAudioTranscription: {},
+
+                        realtimeInputConfig: {
+                            automaticActivityDetection: {
+                                silenceDurationMs: 5000
+} }
                     }
                 }));
             });
 
+            // 3. 定義處理 AI 回應的邏輯 (傳入 roomState 作為參數)
             const handleAiResponse = (role, data) => {
                 const response = JSON.parse(data.toString());
 
+                const targetWs = role === 'HR' ? roomState.hrWs : roomState.managerWs;
+
+                // 處理 Function Call
                 if (response.serverContent?.modelTurn?.parts) {
-                    const parts = response.serverContent.modelTurn.parts;
-                    const functionCallPart = parts.find(p => p.functionCall);
+                    const functionCallPart = response.serverContent.modelTurn.parts.find(p => p.functionCall);
                     if (functionCallPart) {
-                        const toolResponseMsg = JSON.stringify({
-                            toolResponse: {
-                                functionResponses: [{
-                                    id: functionCallPart.functionCall.id || "",
-                                    name: functionCallPart.functionCall.name,
-                                    response: { result: "success", status: "ok" }
-                                }]
-                            }
-                        });
-                        if (role === 'HR') hrWs.send(toolResponseMsg);
-                        else managerWs.send(toolResponseMsg);
+                        targetWs.send(JSON.stringify({
+                            toolResponse: { functionResponses: [{ id: functionCallPart.functionCall.id, name: functionCallPart.functionCall.name, response: { result: "success" } }] }
+                        }));
                     }
                 }
 
-                if (isInterviewEnded) return;
+                if (roomState.isInterviewEnded) return;
 
+                // ==========================================
+                // ✅ Gemini HR 初始化完成
+                // ==========================================
                 if (response.setupComplete && role === 'HR') {
-                    clientWs.send(JSON.stringify({ setupComplete: true }));
-                    isAiSpeaking = true;
-                    // 開場廣播：要求點名第一個應徵者自我介紹
-                    const firstName = candidatesList[0]?.name || "第一位應徵者";
-                    hrWs.send(JSON.stringify({
-                        realtimeInput: { text: `[系統指令] 多人面試正式開始。請你用語音進行熱情開場，歡迎所有人（${candidatesNamesStr}），並請第一位應徵者「${firstName}」先開始自我介紹。` }
+                    console.log("✅ [Gemini HR] Setup Complete，可以開始面試");
+
+                    // ⭐ 告訴前端：Gemini 已經準備完成
+                    wss.clients.forEach(c => {
+                        if (
+                            c.readyState === WebSocket.OPEN &&
+                            c.sessionId === roomState.sessionId
+                        ) {
+                            c.send(JSON.stringify({
+                                setupComplete: true
+                            }));
+                        }
+                    });
+
+                    // ⭐ Gemini 開場
+                    const firstName = candidatesList[0]?.name || "應徵者";
+
+                    roomState.hrWs.send(JSON.stringify({
+                        realtimeInput: {
+                            text: `[系統指令] 請語音開場歡迎大家(${candidatesNamesStr})，並點名「${firstName}」自我介紹。`
+                        }
                     }));
                 }
 
-                if (response.serverContent?.modelTurn?.parts && currentInterviewer === role) {
-                    isAiSpeaking = true;
-                    const audioData = JSON.parse(data.toString());
-                    audioData.ai_role = role;
-
-                    // 廣播給同房間內的所有求職者與戰情室
-                    const audioMsg = JSON.stringify(audioData);
+                // 廣播 AI 聲音內容
+                if (response.serverContent?.modelTurn?.parts && roomState.currentInterviewer === role) {
+                    const audioMsg = JSON.stringify({ ...JSON.parse(data.toString()), ai_role: role });
                     wss.clients.forEach(c => {
-                        if (c.readyState === WebSocket.OPEN && c.sessionId === currentSessionId) {
-                            c.send(audioMsg);
-                        }
+                        if (c.readyState === WebSocket.OPEN && c.sessionId === roomState.sessionId) c.send(audioMsg);
                     });
                 }
 
-                if (response.serverContent?.turnComplete) {
-                    isAiSpeaking = false;
-
-                    if (role === 'HR' && currentInterviewer === 'HR' && isFinalStage) {
-                        if (hrPendingAction === 'HANDOVER_TO_HUMAN') {
-                            console.log('👥 [多人流程] AI HR 移交控制權給真人！');
-                            currentInterviewer = 'HUMAN_INTERVENING';
-                            clientWs.send(JSON.stringify({ customType: 'ai_finished_handover_to_human' }));
-                            hrPendingAction = null;
-                        } else if (hrPendingAction === 'FORCE_END') {
-                            console.log('🏁 [多人流程] AI HR 正式宣告面試結束！');
-                            isInterviewEnded = true;
-                            clientWs.send(JSON.stringify({ customType: 'force_end_interview' }));
-                            hrPendingAction = null;
-                        }
-                    }
-                }
-
+                // 處理語音轉文字邏輯
                 if (response.serverContent?.outputTranscription) {
-                    if (role === 'HR') hrSpeechBuffer += response.serverContent.outputTranscription.text;
-                    else managerSpeechBuffer += response.serverContent.outputTranscription.text;
+                    if (role === 'HR') {
+                        roomState.hrSpeechBuffer += response.serverContent.outputTranscription.text;
+                    } else {
+                        roomState.managerSpeechBuffer += response.serverContent.outputTranscription.text;
+                    }
 
-                    const currentTimeout = role === 'HR' ? hrFlushTimeout : managerFlushTimeout;
-                    if (currentTimeout) clearTimeout(currentTimeout);
+                    // 1. 取得對應的舊計時器並直接清除
+                    const currentTimeout = role === 'HR' ? roomState.hrFlushTimeout : roomState.managerFlushTimeout;
+                    if (currentTimeout) {
+                        clearTimeout(currentTimeout);
+                    }
 
                     const newTimeout = setTimeout(() => {
-                        const bufferText = role === 'HR' ? hrSpeechBuffer : managerSpeechBuffer;
+                        const bufferText = role === 'HR' ? roomState.hrSpeechBuffer : roomState.managerSpeechBuffer;
                         const finalSentence = convert(bufferText.trim()).replace(/\s+/g, '');
 
                         if (finalSentence) {
-                            const isStageDirection = /^[（\(【\[].*[）\)】\]]$/.test(finalSentence);
-                            if (!isStageDirection) {
-                                addLog(`ai_${role}`, finalSentence, "speech");
-                                if (currentInterviewer === role) {
-                                    const aiMsg = JSON.stringify({ customType: 'ai_transcript_final', ai_role: role, text: finalSentence });
-                                    wss.clients.forEach(c => {
-                                        if (c.readyState === WebSocket.OPEN && c.sessionId === currentSessionId) c.send(aiMsg);
-                                    });
+                            const aiMsg = JSON.stringify({
+                                customType: 'ai_transcript_final',
+                                ai_role: role,
+                                text: finalSentence
+                            });
+                            wss.clients.forEach(c => {
+                                if (c.readyState === WebSocket.OPEN && c.sessionId === roomState.sessionId) {
+                                    c.send(aiMsg);
                                 }
+                            });
 
-                                const isRealQuestion = (finalSentence.includes('？') || finalSentence.includes('?')) && finalSentence.length > 10;
+                            if (
+                                role === 'HR' &&
+                                roomState.currentInterviewer === 'HR' &&
+                                !roomState.isHRWrappingUp
+                            ) {
+                                const isRealQuestion =
+                                    (finalSentence.includes('？') || finalSentence.includes('?')) &&finalSentence.length > 10;
 
-                                if (role === 'HR' && currentInterviewer === 'HR' && !isHRWrappingUp && !isInterviewEnded && isRealQuestion) {
-                                    hrRoundCount++;
-                                    console.log(`📊 [多人狀態機] HR 完成第 ${hrRoundCount} 次提問`);
+                                if (isRealQuestion) {
+                                    roomState.hrRoundCount++;
+
+                                    console.log(
+                                        `📊 HR 題數：${roomState.hrRoundCount}`
+                                    );
                                 }
-                                if (role === 'MANAGER' && currentInterviewer === 'MANAGER' && !isManagerWrappingUp && isRealQuestion) {
-                                    managerRoundCount++;
-                                    console.log(`📊 [多人狀態機] 主管完成第 ${managerRoundCount} 次提問`);
+                            }
+                            if (
+                                role === 'MANAGER' &&
+                                roomState.currentInterviewer === 'MANAGER' &&
+                                !roomState.isManagerWrappingUp
+                            ) {
+                                const isRealQuestion =
+                                    (finalSentence.includes('？') || finalSentence.includes('?')) && finalSentence.length > 10;
+
+                                if (isRealQuestion) {
+                                    roomState.managerRoundCount++;
+
+                                    console.log(
+                                        `📊 主管題數：${roomState.managerRoundCount}`
+                                    );
                                 }
+                            }
 
-                                // 🔄 HR 交棒主管
-                                if (role === 'HR' && isHRWrappingUp && currentInterviewer === 'HR') {
-                                    if (finalSentence.includes('部門主管') || finalSentence.includes('交給')) {
-                                        console.log('🔄 [多人權限切換] HR 唸出交接台詞，準備交接給部門主管');
-                                        currentInterviewer = 'HANDOVER';
-                                        isHRWrappingUp = false;
-                                        setTimeout(() => {
-                                            currentInterviewer = 'MANAGER';
-                                            const firstName = candidatesList[0]?.name || "第一位應徵者";
-                                            if (managerWs && managerWs.readyState === WebSocket.OPEN) {
-                                                managerWs.send(JSON.stringify({
-                                                    realtimeInput: { text: `[系統指令] HR 已交棒給你。請立刻開口歡迎大家，並點名「${firstName}」提出第一個技術問題。` }
-                                                }));
-                                            }
-                                        }, 3000);
-                                    }
-                                }
-
-                                // 🔄 主管交還 HR
-                                if (role === 'MANAGER' && isManagerWrappingUp && currentInterviewer === 'MANAGER') {
-                                    if (finalSentence.includes('交還') || finalSentence.includes('人資')) {
-                                        if (currentInterviewer === 'HANDOVER') return;
-                                        console.log('🔄 [多人權限切換] 主管交還給 HR');
-                                        currentInterviewer = 'HANDOVER';
-                                        isManagerWrappingUp = false;
-                                        setTimeout(() => {
-                                            currentInterviewer = 'HR';
-                                            isFinalStage = true;
-
-                                            if (hrWs && hrWs.readyState === WebSocket.OPEN) {
-                                                let hrEndingPrompt = isHumanPresent
-                                                    ? `[系統指令] 部門主管已交還給你。因為稍後有真人面試官接手，請你直接做團體面試過場結語，說明：「感謝各位應徵者與部門主管，接下來將由線上真人面試官與大家交流，請大家稍等一下喔。」絕對不可再問問題。`
-                                                    : `[系統指令] 部門主管已交還給你。請做團體面試結語，包含：「今天的團體面試就到這邊結束，請大家按下結束面試按鈕」。絕對不可再問問題。`;
-                                                hrWs.send(JSON.stringify({ realtimeInput: { text: hrEndingPrompt } }));
-                                            }
-                                        }, 3000);
-                                    }
-                                }
-
-                                // 🏁 判定 AI 人資是否已經講完結語
-                                if (role === 'HR' && currentInterviewer === 'HR' && isFinalStage) {
-                                    if (isHumanPresent) {
-                                        if (finalSentence.includes('真人') || finalSentence.includes('移交') || finalSentence.includes('交流')) {
-                                            hrPendingAction = 'HANDOVER_TO_HUMAN';
+                            // 🔄 HR 交棒主管 (使用 roomState)
+                            if (role === 'HR' && roomState.isHRWrappingUp && roomState.currentInterviewer === 'HR') {
+                                if (finalSentence.includes('部門主管') || finalSentence.includes('交給')) {
+                                    roomState.currentInterviewer = 'HANDOVER';
+                                    roomState.isHRWrappingUp = false;
+                                    setTimeout(() => {
+                                        roomState.currentInterviewer = 'MANAGER';
+                                        if (roomState.managerWs?.readyState === WebSocket.OPEN) {
+                                            roomState.managerWs.send(JSON.stringify({ realtimeInput: { text: `[系統指令] HR 已交棒給你，請開始技術提問。` } }));
                                         }
-                                    } else {
-                                        if (finalSentence.includes('結束面試按鈕')) {
-                                            hrPendingAction = 'FORCE_END';
+                                    }, 3000);
+                                }
+                            }
+
+                            // 🔄 主管交還 HR (使用 roomState)
+                            if (role === 'MANAGER' && roomState.isManagerWrappingUp && roomState.currentInterviewer === 'MANAGER') {
+                                if (finalSentence.includes('交還') || finalSentence.includes('人資')) {
+                                    roomState.currentInterviewer = 'HANDOVER';
+                                    roomState.isManagerWrappingUp = false;
+                                    setTimeout(() => {
+                                        roomState.currentInterviewer = 'HR';
+                                        roomState.isFinalStage = true;
+                                        if (roomState.hrWs?.readyState === WebSocket.OPEN) {
+                                            roomState.hrWs.send(JSON.stringify({
+                                                realtimeInput: {
+                                                    text: `
+                                                    [系統指令]
+
+                                                    部門主管的技術面試已經結束，現在是整場 AI 面試的最終結尾。
+                                                    請只進行一次簡短結語，不可以再提出任何問題，
+                                                    也絕對不可以再次交接給部門主管。
+
+                                                    請明確告訴應徵者：
+
+                                                    「非常感謝各位今天參與面試，AI 面試階段到此結束。
+                                                    若目前沒有真人面試官需要追加提問，
+                                                    請按下『結束面試』按鈕完成本次面試。
+                                                    若稍後有真人面試官進行補充提問，
+                                                    請依真人面試官的指示繼續作答。」
+
+                                                    說完後請停止發言，不要再主動回應應徵者。
+                                                    `.trim()
+                                                    } }));
                                         }
-                                    }
+                                    }, 3000);
                                 }
                             }
                         }
-                        if (role === 'HR') hrSpeechBuffer = ""; else managerSpeechBuffer = "";
+                        if (role === 'HR') roomState.hrSpeechBuffer = ""; else roomState.managerSpeechBuffer = "";
                     }, 2000);
 
-                    if (role === 'HR') hrFlushTimeout = newTimeout; else managerFlushTimeout = newTimeout;
+                    if (role === 'HR') roomState.hrFlushTimeout = newTimeout; else roomState.managerFlushTimeout = newTimeout;
                 }
+                // ==========================================
+                // 👤 應徵者語音轉文字 → 傳到前端即時對話紀錄
+                // ==========================================
+                if (
+                    response.serverContent?.inputTranscription &&
+                    roomState.currentInterviewer === role
+                ) {
+                    const partialText =
+                        response.serverContent.inputTranscription.text || "";
 
-                // 🌟 接收應徵者發言並進行多人點名切換邏輯
-                if (response.serverContent?.inputTranscription && currentInterviewer === role) {
-                    let userText = convert(response.serverContent.inputTranscription.text).replace(/\s+/g, '');
-                    addLog("user", userText, "speech");
+                    if (partialText) {
+                        // 累積 Gemini 傳回來的語音辨識片段
+                        roomState.userSpeechBuffer += partialText;
 
-                    const userMsg = JSON.stringify({ customType: 'user_transcript', text: userText });
-                    wss.clients.forEach(c => {
-                        if (c.readyState === WebSocket.OPEN && c.sessionId === currentSessionId) c.send(userMsg);
-                    });
+                        // 每收到新片段就重新計時
+                        if (roomState.userFlushTimeout) {
+                            clearTimeout(roomState.userFlushTimeout);
+                        }
 
-                    // 檢查是否達到目標發問輪數
-                    const totalRequiredHRQuestions = hrTargetRounds * candidatesList.length;
-                    const totalRequiredManagerQuestions = managerTargetRounds * candidatesList.length;
+                        roomState.userFlushTimeout = setTimeout(() => {
+                            const finalUserText = convert(
+                                roomState.userSpeechBuffer.trim()
+                            )
+                                .replace(/([\u3400-\u9FFF])\s+(?=[\u3400-\u9FFF])/g, '$1')
+                                .replace(/\s+([，。！？、,.!?])/g, '$1');
+
+                            // 清空 buffer
+                            roomState.userSpeechBuffer = "";
+
+                            if (!finalUserText) return;
+
+                            console.log(
+                                `👤 [應徵者語音辨識] ${finalUserText}`
+                            );
+
+                            // 存入面試紀錄
+                            addLog(
+                                roomState.sessionId,
+                                'user',
+                                finalUserText,
+                                "speech"
+                            );
+
+                            // ⭐ 廣播給這個房間的所有前端
+                            const userMsg = JSON.stringify({
+                                customType: 'user_transcript',
+                                text: finalUserText
+                            });
+
+                            wss.clients.forEach(c => {
+                                if (
+                                    c.readyState === WebSocket.OPEN &&
+                                    c.sessionId === roomState.sessionId
+                                ) {
+                                    c.send(userMsg);
+                                }
+                            });
+
+                        }, 4000);
+                    }
+                }                // 應徵者發言邏輯
+                if (
+                    response.serverContent?.inputTranscription &&
+                    roomState.currentInterviewer === role
+                ) {
+                    const userText =
+                        response.serverContent.inputTranscription.text;
 
                     const isTargetReached =
-                        (role === 'HR' && hrRoundCount >= totalRequiredHRQuestions && !isHRWrappingUp) ||
-                        (role === 'MANAGER' && managerRoundCount >= totalRequiredManagerQuestions && !isManagerWrappingUp);
+                        (
+                            role === 'HR' &&
+                            roomState.hrRoundCount >=
+                            (roomState.hrTargetRounds * candidatesList.length)
+                        )
+                        ||
+                        (
+                            role === 'MANAGER' &&
+                            roomState.managerRoundCount >=
+                            (roomState.managerTargetRounds * candidatesList.length)
+                        );
 
-                    if (isTargetReached) {
-                        console.log(`🚀 [多人預先注入] 階段發問達標，啟動轉場 (${role})`);
+                    // ⭐ 已經正在交接就不能再送第二次
+                    const alreadyWrapping =
+                        role === 'HR'
+                            ? roomState.isHRWrappingUp
+                            : roomState.isManagerWrappingUp;
 
-                        if (role === 'HR') isHRWrappingUp = true;
-                        else isManagerWrappingUp = true;
+                    // ⭐ 最後結尾階段也不能再次觸發 HR → Manager
+                    if (
+                        isTargetReached &&
+                        !alreadyWrapping &&
+                        !roomState.isFinalStage &&
+                        !roomState.aiPhaseFinished
+                    ) {
+                        if (role === 'HR') {
+                            roomState.isHRWrappingUp = true;
+                        } else {
+                            roomState.isManagerWrappingUp = true;
+                        }
 
-                        const handoverLine = role === 'HR'
-                            ? "非常感謝大家的精彩分享。接下來的專業技術環節，我將交給部門主管來主持。"
-                            : "謝謝各位的詳細說明。我的技術提問部分就到這裡，交還給人資。";
-
-                        const injectionPrompt = `
-                            [系統核心指令] 
-                            1. 應徵者剛剛回答："${userText}"
-                            2. 請簡短給予一句禮貌的總結。
-                            3. 隨後【必須】直接朗讀這句台詞：「${handoverLine}」。
-                            4. 執行完成後絕對禁止再點名或詢問任何新問題。
-                        `;
+                        const handoverLine =
+                            role === 'HR'
+                                ? "非常感謝大家的精彩分享。接下來的專業技術環節，我將交給部門主管來主持。"
+                                : "謝謝各位的詳細說明。我的技術提問部分就到這裡，交還給人資。";
 
                         const injectionMsg = {
                             clientContent: {
-                                turns: [{ role: "user", parts: [{ text: injectionPrompt }] }],
+                                turns: [{
+                                    role: "user",
+                                    parts: [{
+                                        text:
+                                            `[系統指令] 應徵者說了: "${userText}"。` +
+                                            `請簡短總結一次，並只說一次以下交接台詞：` +
+                                            `「${handoverLine}」` +
+                                            `交接完成後不要重複。`
+                                    }]
+                                }],
                                 turnComplete: true
                             }
                         };
 
-                        if (role === 'HR') hrWs.send(JSON.stringify(injectionMsg));
-                        else managerWs.send(JSON.stringify(injectionMsg));
-                        return;
+                        if (
+                            role === 'HR' &&
+                            roomState.hrWs?.readyState === WebSocket.OPEN
+                        ) {
+                            roomState.hrWs.send(
+                                JSON.stringify(injectionMsg)
+                            );
+                        }
+
+                        if (
+                            role === 'MANAGER' &&
+                            roomState.managerWs?.readyState === WebSocket.OPEN
+                        ) {
+                            roomState.managerWs.send(
+                                JSON.stringify(injectionMsg)
+                            );
+                        }
                     }
+                }
+                if (
+                    response.serverContent?.turnComplete &&
+                    role === 'HR' &&
+                    roomState.isFinalStage &&
+                    !roomState.aiPhaseFinished
+                ) {
+                    roomState.aiPhaseFinished = true;
+                    roomState.currentInterviewer = 'WAITING_HUMAN';
+
+                    console.log("🏁 AI 面試結束，AI 不再回答，等待真人 HR");
+
+                    wss.clients.forEach(c => {
+                        if (
+                            c.readyState === WebSocket.OPEN &&
+                            c.sessionId === roomState.sessionId
+                        ) {
+                            c.send(JSON.stringify({
+                                customType: 'ai_phase_finished'
+                            }));
+                        }
+                    });
                 }
             };
 
-            hrWs.on('message', (data) => handleAiResponse('HR', data));
-            managerWs.on('message', (data) => handleAiResponse('MANAGER', data));
+            roomState.hrWs.on('message', (data) => handleAiResponse('HR', data));
+            roomState.managerWs.on('message', (data) => handleAiResponse('MANAGER', data));
+            roomState.hrWs.on('close', (code, reason) => {
+                console.error(
+                    `🔴 [Gemini HR] WebSocket 關閉`,
+                    {
+                        code,
+                        reason: reason.toString()
+                    }
+                );
+            });
+
+            roomState.hrWs.on('error', (err) => {
+                console.error(
+                    `❌ [Gemini HR] WebSocket 錯誤:`,
+                    err.message
+                );
+            });
+
+            roomState.managerWs.on('close', (code, reason) => {
+                console.error(
+                    `🔴 [Gemini Manager] WebSocket 關閉`,
+                    {
+                        code,
+                        reason: reason.toString()
+                    }
+                );
+            });
+
+            roomState.managerWs.on('error', (err) => {
+                console.error(
+                    `❌ [Gemini Manager] WebSocket 錯誤:`,
+                    err.message
+                );
+            });
         };
 
         clientWs.on('message', async (msg) => {
             try {
+                const msgStr = msg.toString();
+                // 音訊封包非常頻繁，不印出來，避免 Terminal 洗版
+                if (!msgStr.includes('realtimeInput')) {
+                    console.log(
+                        `📩 [控制訊息]`,
+                        msgStr.substring(0, 150)
+                    );
+                }
                 const parsedMsg = JSON.parse(msg.toString());
 
+                // 🌟 1. 如果訊息內有帶 sessionId，立刻綁定到 clientWs 上
                 if (parsedMsg.sessionId) {
+                    currentSessionId = parsedMsg.sessionId;
                     clientWs.sessionId = parsedMsg.sessionId;
                 }
+
+                // 🌟 2. 核心防線：如果變數掉了，強制從 clientWs 物件身上拿！
+                if (!currentSessionId && clientWs.sessionId) {
+                    currentSessionId = clientWs.sessionId;
+                }
+
+                // 3. 處理語音輸入 (realtimeInput)
                 if (parsedMsg.realtimeInput) {
-                    if (currentInterviewer === 'HR' && hrWs && hrWs.readyState === WebSocket.OPEN) {
-                        hrWs.send(msg.toString());
-                    } else if (currentInterviewer === 'MANAGER' && managerWs && managerWs.readyState === WebSocket.OPEN) {
-                        managerWs.send(msg.toString());
+                    // 如果到這裡還是沒有房間 ID，才報警
+                    if (!currentSessionId) {
+                        console.warn("⚠️ [嚴重] 收到語音但此連線完全未綁定任何 Session ID！");
+                        return;
+                    }
+
+                    const room = activeRooms.get(currentSessionId);
+                    if (room) {
+                        // AI 還沒結束時，才把聲音送給 Gemini
+                        if (!room.aiPhaseFinished && room.currentInterviewer !== 'WAITING_HUMAN') {
+                            let targetWs = null;
+                            if (room.currentInterviewer === 'HR') targetWs = room.hrWs;
+                            else if (room.currentInterviewer === 'MANAGER') targetWs = room.managerWs;
+
+                            if (targetWs && targetWs.readyState === WebSocket.OPEN) {
+                                targetWs.send(JSON.stringify({
+                                    realtimeInput: parsedMsg.realtimeInput
+                                }));
+                            }
+                        }
+
+                        // 只有真的有文字時才記錄＋廣播
+                        if (parsedMsg.realtimeInput.text) {
+                            addLog(
+                                currentSessionId,
+                                'user',
+                                parsedMsg.realtimeInput.text,
+                                "speech"
+                            );
+
+                            const broadcastMsg = JSON.stringify({
+                                customType: 'user_transcript',
+                                text: parsedMsg.realtimeInput.text
+                            });
+
+                            wss.clients.forEach(c => {
+                                if (
+                                    c.readyState === WebSocket.OPEN &&
+                                    c.sessionId === currentSessionId
+                                ) {
+                                    c.send(broadcastMsg);
+                                }
+                            });
+                        }                    } else {
+                        console.warn(`⚠️ 找不到對應的 activeRoom: ${currentSessionId}`);
                     }
                     return;
                 }
@@ -429,8 +657,7 @@ function setupGroupWebSocket(options) {
                     parsedMsg.type === 'webrtc_ice_candidate' ||
                     parsedMsg.type === 'hr_joined_group') {
 
-                    isHumanPresent = true;
-                    console.log(`📡 [多人WebRTC] 房號 [${parsedMsg.sessionId}] 轉發訊號: ${parsedMsg.type}`);
+                        console.log(`📡 [多人WebRTC] 房號 [${parsedMsg.sessionId}] 轉發訊號: ${parsedMsg.type}`);
 
                     wss.clients.forEach(client => {
                         if (client !== clientWs && client.readyState === WebSocket.OPEN && client.sessionId === parsedMsg.sessionId) {
@@ -476,18 +703,37 @@ function setupGroupWebSocket(options) {
                 }
 
                 if (parsedMsg.customType === 'execute_backend_pause') {
-                    if (currentInterviewer !== 'HANDOVER' && currentInterviewer !== 'HUMAN_INTERVENING') {
-                        previousInterviewer = currentInterviewer;
+                    const room = activeRooms.get(currentSessionId);
+                    if (room) {
+                        if (room.currentInterviewer !== 'HANDOVER' && room.currentInterviewer !== 'HUMAN_INTERVENING') {
+                            room.previousInterviewer = room.currentInterviewer;
+                        }
+                        room.currentInterviewer = 'HUMAN_INTERVENING';
                     }
-                    currentInterviewer = 'HUMAN_INTERVENING';
                     return;
                 }
 
                 if (parsedMsg.customType === 'execute_backend_resume') {
-                    currentInterviewer = previousInterviewer;
-                    const resumeMsg = JSON.stringify({ clientContent: { turns: [{ role: "user", parts: [{ text: `[系統指令] 真人面試官插話結束，請繼續團體面試流程，點名下一位應徵者提問。` }] }], turnComplete: true } });
-                    if (currentInterviewer === 'HR' && hrWs && hrWs.readyState === WebSocket.OPEN) hrWs.send(resumeMsg);
-                    if (currentInterviewer === 'MANAGER' && managerWs && managerWs.readyState === WebSocket.OPEN) managerWs.send(resumeMsg);
+                    const room = activeRooms.get(currentSessionId);
+                    if (!room) return;
+
+                    // 確保狀態切回原本的面試官（建議 previousInterviewer 也存放在 room 裡面）
+                    room.currentInterviewer = room.previousInterviewer || 'HR';
+
+                    const resumeMsg = JSON.stringify({
+                        clientContent: {
+                            turns: [{ role: "user", parts: [{ text: `[系統指令] 真人面試官插話結束，請繼續團體面試流程，點名下一位應徵者提問。` }] }],
+                            turnComplete: true
+                        }
+                    });
+
+                    // 🌟 修改處：使用 room 中的 ws
+                    if (room.currentInterviewer === 'HR' && room.hrWs?.readyState === WebSocket.OPEN) {
+                        room.hrWs.send(resumeMsg);
+                    }
+                    if (room.currentInterviewer === 'MANAGER' && room.managerWs?.readyState === WebSocket.OPEN) {
+                        room.managerWs.send(resumeMsg);
+                    }
                     return;
                 }
 
@@ -500,8 +746,12 @@ function setupGroupWebSocket(options) {
                     wss.clients.forEach(c => {
                         if (c.readyState === WebSocket.OPEN && c.sessionId === parsedMsg.sessionId) c.send(textMsg);
                     });
-                    addLog("human_HR", parsedMsg.text, "speech");
-                    return;
+                    addLog(
+                        parsedMsg.sessionId,
+                        "human_HR",
+                        parsedMsg.text,
+                        "speech"
+                    );                    return;
                 }
                 // ==========================================
                 // 🌟 接收應徵者在「暫停期間」講的話 (備用打字員傳來的)
@@ -522,17 +772,60 @@ function setupGroupWebSocket(options) {
                     });
 
                     // 存入對話紀錄
-                    addLog("user", parsedMsg.text, "speech");
-                    return;
+                    addLog(
+                        parsedMsg.sessionId,
+                        "user",
+                        parsedMsg.text,
+                        "speech"
+                    );                    return;
                 }
 
                 // ==========================================
-                // 🌟 初始化「多人團體面試」
+                // 🌟 初始化「多人團體面試」或加入現有房間
                 // ==========================================
-                // ✅ 修改後：正確結合 applicants 資料表與動態人數
                 if (parsedMsg.customType === 'init_group_interview') {
-                    currentSessionId = parsedMsg.sessionId;
-                    const { candidateIds, applicantIds, position, interview_type, jobId } = parsedMsg;
+                    const { sessionId, candidateIds, applicantIds, position, interview_type, jobId } = parsedMsg;
+                    currentSessionId = sessionId;
+                    clientWs.sessionId = sessionId;
+
+                    if (activeRooms.has(sessionId)) {
+                        console.log(`👥 [多人模式] 使用者已加入已存在的房間 [${sessionId}]`);
+                        clientWs.sessionId = sessionId;
+                        return;
+                    }
+
+                    // 在 init_group_interview 的區塊中
+                    const roomState = {
+                        sessionId: sessionId, // 存入 ID
+                        hrWs: null,
+                        managerWs: null,
+
+                        // 🌟 原本的區域變數全部變成 roomState 的屬性
+                        currentInterviewer: 'HR',
+                        previousInterviewer: 'HR',
+                        isInterviewEnded: false,
+
+                        hrRoundCount: 0,
+                        managerRoundCount: 0,
+                        hrTargetRounds: 2,
+                        managerTargetRounds: 3,
+
+                        isHRWrappingUp: false,
+                        isManagerWrappingUp: false,
+                        isFinalStage: false,
+                        aiPhaseFinished: false,
+
+                        transcript: [],
+                        hrSpeechBuffer: "",
+                        managerSpeechBuffer: "",
+                        // ⭐ 應徵者語音轉文字暫存
+                        userSpeechBuffer: "",
+                        hrFlushTimeout: null,
+                        managerFlushTimeout: null,
+                        // ⭐ 應徵者文字整理計時器
+                        userFlushTimeout: null
+                    };
+                    activeRooms.set(sessionId, roomState);
 
                     await supabase.from('interview_sessions').update({
                         applied_position: position,
@@ -547,47 +840,37 @@ function setupGroupWebSocket(options) {
                     const targetApplicantIds = applicantIds || candidateIds;
 
                     if (Array.isArray(targetApplicantIds) && targetApplicantIds.length > 0) {
-                        // 從 applicants 抓取真實姓名
-                        const { data: applicantsData } = await supabase
-                            .from('applicants')
-                            .select('*')
-                            .in('id', targetApplicantIds);
-
-                        // 同時抓取 resumes 內容作為補充
-                        const { data: resumesData } = await supabase
+                        const { data: resumesData, error: resumeErr } = await supabase
                             .from('resumes')
-                            .select('*')
+                            .select(`
+                *,
+                applicants ( name )
+            `)
                             .in('resume_id', targetApplicantIds);
 
-                        if (applicantsData && applicantsData.length > 0) {
-                            candidatesList = applicantsData.map((app, index) => ({
-                                name: app.name || `應徵者${index + 1}`,
-                                id: app.id
-                            }));
+                        if (resumeErr) {
+                            console.error("❌ 撈取履歷發生錯誤:", resumeErr);
+                        }
 
-                            candidatesInfoText = applicantsData.map((app, index) => {
-                                const matchedResume = resumesData?.find(r => r.resume_id === app.id || r.applicant_id === app.id);
-                                return `【應徵者 ${index + 1}】：${app.name}\n學歷：${matchedResume?.education || '無'}\n經歷：${matchedResume?.work_experience || '無'}\n`;
-                            }).join('\n');
-                        } else if (resumesData && resumesData.length > 0) {
+                        if (resumesData && resumesData.length > 0) {
                             candidatesList = resumesData.map((r, index) => ({
-                                name: r.name || `應徵者${index + 1}`,
-                                resumeId: r.resume_id
+                                name: r.applicants?.name || `應徵者${index + 1}`,
+                                id: r.applicant_id
                             }));
 
                             candidatesInfoText = resumesData.map((r, index) =>
-                                `【應徵者 ${index + 1}】：${r.name || '未提供姓名'}\n學歷：${r.education}\n經歷：${r.work_experience}\n`
+                                `【應徵者 ${index + 1}】：${r.applicants?.name || '未提供姓名'}\n學歷：${r.education || '無'}\n經歷：${r.work_experience || '無'}\n`
                             ).join('\n');
                         }
                     }
 
-                    // 如果沒有傳入任何 ID 或資料庫沒撈到，改為動態根據目前上線的真人人數或預設處理
                     if (candidatesList.length === 0) {
                         candidatesList = [{ name: "應徵者" }];
                         candidatesInfoText = "目前線上僅有一位應徵者進行面試。";
                     }
 
                     console.log(`👥 [多人面試初始化] 成功載入實際應徵者人數: ${candidatesList.length} 人，名單:`, candidatesList.map(c => c.name));
+
                     // 2. 抓取職缺資訊
                     let jobDetailsText = "無特定職缺資料";
                     if (jobId) {
@@ -605,7 +888,15 @@ function setupGroupWebSocket(options) {
                     }
 
                     // 4. 啟動多人專用 Gemini 連線
-                    startGroupGeminiConnections(candidatesInfoText, candidatesList, position, interview_type, jobDetailsText, companyContext);
+                    startGroupGeminiConnections(
+                        roomState,
+                        candidatesInfoText,
+                        candidatesList,
+                        position,
+                        interview_type,
+                        jobDetailsText,
+                        companyContext
+                    );
                 }
 
             } catch (err) {
@@ -615,9 +906,25 @@ function setupGroupWebSocket(options) {
 
         clientWs.on('close', () => {
             console.log('🔴 [前端] 連線已中斷 (多人模式)');
+
+            const remainingClients = [...wss.clients].filter(c =>
+                c.readyState === WebSocket.OPEN &&
+                c.sessionId === currentSessionId
+            );
+
+            console.log(`👥 房間剩餘 ${remainingClients.length} 個連線`);
+
+            // 房間還有人，就不要關 AI
+            if (remainingClients.length > 0) return;
+
+            // 最後一個人離開才存檔＋關 Gemini
             saveToDatabase();
-            if (hrWs) hrWs.close();
-            if (managerWs) managerWs.close();
+
+            const room = activeRooms.get(currentSessionId);
+            if (room) {
+                if (room.hrWs) room.hrWs.close();
+                if (room.managerWs) room.managerWs.close();
+            }
         });
     });
     return wss;

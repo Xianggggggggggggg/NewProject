@@ -826,12 +826,19 @@ async function loadHistorySessions() {
         } else if (s.status === 'status-2') {
             // 狀態 2：HR 已允許面試
             btn.textContent = '▶️ 進入面試';
-            btn.style.backgroundColor = '#ff9800'; // 醒目的橘色
+            btn.style.backgroundColor = '#00b894';
             btn.style.color = 'white';
             btn.disabled = false;
+            
             btn.addEventListener('click', () => {
-                // 將面試需要的參數帶上並跳轉
-                window.location.href = `interview.html?session_id=${s.session_id}&resume_id=${s.resume_id}&position=${encodeURIComponent(s.position)}&type=${encodeURIComponent(s.type)}`;
+                // 1. 判斷要去單人還是多人房間
+                const targetUrl = s.room_id ? 'group_interview.html' : 'interview.html';
+                
+                // 2. 🌟 關鍵修復：如果是多人面試，使用共用的 room_id 當作網址的 session_id 鑰匙；單人面試才用個人的 session_id
+                const correctRoomKey = s.room_id ? s.room_id : s.session_id;
+                
+                // 3. 帶入正確的共用房號跳轉
+                window.location.href = `${targetUrl}?session_id=${correctRoomKey}&resume_id=${s.resume_id}&position=${encodeURIComponent(s.position || '')}&type=${encodeURIComponent(s.type || '')}`;
             });
         } else {
             // 狀態 3, 4, 5 或 已結束：查看報告

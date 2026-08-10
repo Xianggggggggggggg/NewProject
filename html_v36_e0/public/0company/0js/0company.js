@@ -754,6 +754,128 @@ window.closeJobComparisonModal = function () {
   if (overlay) overlay.style.display = 'none';
 };
 
+window.closeGroupReportModal = function () {
+  const overlay = document.getElementById('group-report-overlay');
+  if (overlay) overlay.style.display = 'none';
+};
+
+window.insertRoomManageReportButtons = function () {
+  const container = document.getElementById('sessions-container');
+  if (!container) return;
+
+  container.querySelectorAll('.action-group').forEach(group => {
+    const existingCustom = group.querySelector('.btn-group-report');
+    const existingLegacy = Array.from(group.querySelectorAll('button')).find(btn => {
+      const text = (btn.textContent || '').trim();
+      const onclick = btn.getAttribute('onclick') || '';
+      return text.includes('查看團面報告') || /generateGroupReport\(/.test(onclick);
+    });
+
+    if (existingLegacy) {
+      if (existingLegacy !== existingCustom) {
+        existingLegacy.remove();
+      }
+    }
+
+    if (existingCustom) return;
+
+    const markerBtn = group.querySelector('button[onclick*="deleteRoom("]') || group.querySelector('button[onclick*="openEditModal("]') || group.querySelector('button[onclick*="enterRoom("]');
+    if (!markerBtn) return;
+
+    const onclick = markerBtn.getAttribute('onclick') || '';
+    const roomMatch = onclick.match(/\('([^']+)'/);
+    const roomId = roomMatch ? roomMatch[1] : null;
+    if (!roomId) return;
+    const styleSourceBtn = editBtn || deleteBtn || markerBtn;
+
+    const reportBtn = document.createElement('button');
+    reportBtn.type = 'button';
+    reportBtn.className = styleSourceBtn.className;
+    reportBtn.classList.add('btn-group-report'); // 保留識別用 class，供查找/去重使用
+    reportBtn.textContent = '📊 查看團面報告';
+    reportBtn.addEventListener('click', () => window.openCompanyGroupReportModal(roomId));
+
+    if (deleteBtn) {
+      group.insertBefore(reportBtn, deleteBtn);
+    } else {
+      group.appendChild(reportBtn);
+    }
+  });
+};
+
+window.watchRoomManageReportButtons = function () {
+  const container = document.getElementById('sessions-container');
+  if (!container) return;
+  window.insertRoomManageReportButtons();
+
+  const observer = new MutationObserver(() => {
+    window.insertRoomManageReportButtons();
+  });
+  observer.observe(container, { childList: true, subtree: true });
+};
+
+window.openCompanyGroupReportModal = async function (roomId) {
+  const overlay = document.getElementById('group-report-overlay');
+  const content = document.getElementById('group-report-content');
+  if (!overlay || !content) {
+    alert('找不到團面報告視窗，請確認頁面結構。');
+    return;
+  }
+
+  overlay.style.display = 'flex';
+  content.innerHTML = '<div style="padding: 30px; color: #666; text-align: center;">⏳ 正在載入團面報告，請稍候...</div>';
+
+  try {
+    const res = await fetch(`/api/company/group-rooms/${roomId}/report`, { method: 'POST' });
+    const result = await res.json();
+    if (!result.success) {
+      content.innerHTML = `<div style="color: #e74c3c; padding: 20px; text-align: center;">${result.error || '報告載入失敗'}</div>`;
+      return;
+    }
+
+    const report = result.report || {};
+    const rankingHtml = (report.ranking || []).map((item, index) => `
+      <div style="margin-bottom: 12px; padding: 12px 15px; background: #f9fbf9; border-left: 4px solid #1D9E75; border-radius: 6px;">
+        <strong style="color: #2C3E50; font-size: 15px;">第 ${index + 1} 名：${item.name} (合適度: <span style="color:#1D9E75;">${item.overall_score ?? '--'}%</span>)</strong>
+        <p style="margin: 5px 0 0 0; color: #555; font-size: 14px; line-height: 1.5;">${item.reason || ''}</p>
+      </div>
+    `).join('') || '<p style="color:#888;">尚無排名資料</p>';
+
+    content.innerHTML = `
+    <div style="padding: 20px; max-height: 70vh; overflow-y: auto; line-height: 1.6;">
+      <h3 style="color:#2C3E50; margin-top:0;">📊 房間 ${roomId} 團面報告</h3>
+      <p style="color:#444;">${report.room_overview || '尚無報告摘要可顯示。'}</p>
+      <div style="margin: 20px 0; display: flex; gap: 20px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 220px; padding: 15px; background: #f4f7f8; border-radius: 8px;">
+          <div style="font-weight: bold; margin-bottom: 8px;">報告狀態</div>
+          <div>${result.status || '已完成'}</div>
+        </div>
+        <div style="flex: 1; min-width: 220px; padding: 15px; background: #fdf2f2; border-radius: 8px;">
+          <div style="font-weight: bold; margin-bottom: 8px;">應徵者人數</div>
+          <div>${result.applicant_count ?? '--'} 人</div>
+        </div>
+      </div>
+      <h4 style="color:#2C3E50;">推薦排名</h4>
+      ${rankingHtml}
+      <div style="margin: 20px 0; display: flex; gap: 20px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 220px; padding: 15px; background: #eef7f0; border-radius: 8px;">
+          <div style="font-weight: bold; margin-bottom: 8px; color:#1D9E75;">🗣️ 最佳溝通表現</div>
+          <div style="color:#555; font-size: 14px;">${report.best_communicator || '無資料'}</div>
+        </div>
+        <div style="flex: 1; min-width: 220px; padding: 15px; background: #eef4fb; border-radius: 8px;">
+          <div style="font-weight: bold; margin-bottom: 8px; color:#3498db;">⭐ 最突出表現</div>
+          <div style="color:#555; font-size: 14px;">${report.standout_performer || '無資料'}</div>
+        </div>
+      </div>
+      <button style="margin-top: 20px; width:100%; padding: 12px 0; background: #2e7d32; color: white; border:none; border-radius: 8px; cursor:pointer;" onclick="window.openCompanyGroupReportModal('${roomId}')">🔄 重新整理報告</button>
+    </div>
+  `;
+  } catch (err) {
+    console.error(err);
+    content.innerHTML = `<div style="color: #e74c3c; padding: 20px; text-align: center;">報告載入失敗，請稍後再試。</div>`;
+  }
+};
+
 // ================= 5. 系統啟動 =================
 window.addEventListener('DOMContentLoaded', () => {
   window.loadCompanyComponents();
@@ -773,8 +895,21 @@ window.addEventListener('DOMContentLoaded', () => {
     applicantListContainer.addEventListener('change', (e) => {
       if (e.target.classList.contains('status-select')) {
         const sessionId = e.target.dataset.id;
+        const newStatus = e.target.value;
         window.changeStatusColor(e.target);
-        window.updateApplicantStatus(sessionId, e.target.value);
+
+        // 🌟 攔截！如果選了「等待應徵者面試」(status-2)
+        if (newStatus === 'status-2') {
+          // 1. 抓出這個 session_id 對應的完整資料
+          const appData = window.applicantDataMap[sessionId];
+          // 2. 抽出職缺名稱 (如果找不到就給預設值)
+          const jobTitle = appData ? appData.job_title : '未指定職缺';
+          
+          // 3. 把 session_id 跟 job 兩個參數一起透過網址帶過去！
+          window.location.href = `0setup.html?session_id=${sessionId}&job=${encodeURIComponent(jobTitle)}`;
+        } else {
+          window.updateApplicantStatus(sessionId, newStatus);
+        }
       }
     });
 
@@ -794,6 +929,11 @@ window.addEventListener('DOMContentLoaded', () => {
   const btnCloseJobComparisonModal = document.getElementById('btn-close-job-comparison-modal');
   if (btnCloseJobComparisonModal) {
     btnCloseJobComparisonModal.addEventListener('click', window.closeJobComparisonModal);
+  }
+
+  if (document.getElementById('sessions-container')) {
+  
+    window.generateGroupReport = window.openCompanyGroupReportModal;
   }
 
   // 🌟 你的聊天室邏輯完整放在這裡 🌟
@@ -905,7 +1045,136 @@ window.addEventListener('DOMContentLoaded', () => {
     loadContacts();
   }
 });
+// ==========================================
+// 👥 團體面試專屬報告邏輯
+// ==========================================
 
+// 1. 關閉 Modal
+window.closeGroupReportModal = function() {
+    const overlay = document.getElementById('group-report-overlay');
+    if (overlay) overlay.style.display = 'none';
+};
+
+// 2. 呼叫 API 並渲染報告 (火力全開擴充版)
+window.generateGroupReport = async function(roomId) {
+    const overlay = document.getElementById('group-report-overlay');
+    const content = document.getElementById('group-report-content');
+    
+    if (!overlay || !content) return alert('找不到報告視窗元件！');
+
+    // 顯示 Loading
+    overlay.style.display = 'flex';
+    content.innerHTML = '<div style="padding: 50px 20px; text-align: center; color: #666; font-size: 16px;">⏳ 正在請 AI 顧問分析同場團面表現，請稍候...<br>(約需 10~15 秒)</div>';
+
+    try {
+        // 呼叫我們剛剛寫好的 API
+        const res = await fetch(`/api/company/group-rooms/${roomId}/report`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const result = await res.json();
+
+        if (!result.success) {
+            content.innerHTML = `<div style="color:#e74c3c; padding:20px; background:#fdf2f2; border-radius:8px; margin:10px;">產生失敗：${result.error}</div>`;
+            return;
+        }
+
+        const report = result.report;
+        
+        // --- 渲染排名 HTML ---
+        let rankingHtml = '';
+        if (report.ranking && report.ranking.length > 0) {
+            rankingHtml = report.ranking.map((r, i) => `
+                <div style="margin-bottom: 15px; padding: 15px; background: #f9fbf9; border-left: 5px solid #1D9E75; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <strong style="color: #2C3E50; font-size: 16px;">第 ${i+1} 名：${r.name}</strong>
+                        <span style="background: #1D9E75; color: white; padding: 3px 10px; border-radius: 12px; font-size: 13px; font-weight: bold;">評分: ${r.overall_score || 'N/A'}</span>
+                    </div>
+                    <p style="margin: 0 0 5px 0; color: #1565c0; font-size: 14px; font-weight: 500;">💡 優勢：${r.core_strength || '無'}</p>
+                    <p style="margin: 0; color: #555; font-size: 14px; line-height: 1.5;">${r.reason || '無'}</p>
+                </div>
+            `).join('');
+        } else {
+            rankingHtml = '<p style="color:#888;">尚無排名資料</p>';
+        }
+
+        // --- 渲染個人詳細分析 HTML ---
+        let individualHtml = '';
+        if (report.individual_details && report.individual_details.length > 0) {
+            individualHtml = report.individual_details.map(p => `
+                <div style="margin-bottom: 15px; padding: 12px 15px; background: #fff; border: 1px solid #e0e0e0; border-radius: 8px;">
+                    <strong style="color: #34495e; font-size: 15px;">👤 ${p.name} <span style="font-size: 13px; color: #7f8c8d; font-weight: normal;">(發言積極度: ${p.participation_level || 'N/A'})</span></strong>
+                    <div style="display: flex; gap: 15px; margin-top: 10px;">
+                        <div style="flex: 1;">
+                            <span style="color: #27ae60; font-size: 13px; font-weight: bold;">👍 亮點：</span>
+                            <ul style="margin: 5px 0 0 0; padding-left: 18px; font-size: 13px; color: #444;">
+                                ${(p.highlights || []).map(h => `<li>${h}</li>`).join('') || '<li>無特別亮點</li>'}
+                            </ul>
+                        </div>
+                        <div style="flex: 1;">
+                            <span style="color: #c0392b; font-size: 13px; font-weight: bold;">⚠️ 疑慮：</span>
+                            <ul style="margin: 5px 0 0 0; padding-left: 18px; font-size: 13px; color: #444;">
+                                ${(p.concerns || []).map(c => `<li>${c}</li>`).join('') || '<li>無明顯疑慮</li>'}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            individualHtml = '<p style="color:#888;">尚無個人分析資料</p>';
+        }
+
+        // --- 渲染完整報告畫面 ---
+        content.innerHTML = `
+            <div style="padding: 10px 20px 20px 20px; line-height: 1.6; max-height: 70vh; overflow-y: auto; background-color: #fcfcfc;">
+                
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <span style="background:#e8f5e9; color:#1D9E75; padding:6px 15px; border-radius:20px; font-size:14px; font-weight:bold;">👥 同場對比總人數：${result.applicant_count} 人</span>
+                </div>
+                
+                <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #eee; margin-bottom: 25px;">
+                    <h3 style="color:#2C3E50; margin: 0 0 10px 0; font-size: 16px;">🌟 團面氣氛與團隊動態</h3>
+                    <p style="color:#444; font-size: 14px; margin-bottom: 10px;"><strong>整體概況：</strong>${report.room_overview || '無'}</p>
+                    <p style="color:#444; font-size: 14px; margin: 0;"><strong>互動分析：</strong>${report.team_dynamics || '無'}</p>
+                </div>
+
+                <h3 style="color:#2C3E50; border-bottom:2px solid #f0f0f0; padding-bottom:8px; font-size: 16px;">🏆 綜合表現排名</h3>
+                ${rankingHtml}
+
+                <h3 style="color:#2C3E50; border-bottom:2px solid #f0f0f0; padding-bottom:8px; margin-top:25px; font-size: 16px;">🎖️ 關鍵指標人選</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+                    <div style="background: #fff3e0; padding: 12px; border-radius: 8px; border-left: 4px solid #ff9800;">
+                        <div style="color:#e65100; font-weight:bold; font-size: 14px;">🗣️ 最佳溝通者</div>
+                        <strong style="color: #333; font-size: 15px; display: block; margin: 5px 0;">${report.role_awards?.best_communicator?.name || '無'}</strong>
+                        <div style="font-size: 13px; color: #555;">${report.role_awards?.best_communicator?.reason || ''}</div>
+                    </div>
+                    <div style="background: #e3f2fd; padding: 12px; border-radius: 8px; border-left: 4px solid #2196f3;">
+                        <div style="color:#1565c0; font-weight:bold; font-size: 14px;">💻 專業最突出</div>
+                        <strong style="color: #333; font-size: 15px; display: block; margin: 5px 0;">${report.role_awards?.standout_performer?.name || '無'}</strong>
+                        <div style="font-size: 13px; color: #555;">${report.role_awards?.standout_performer?.reason || ''}</div>
+                    </div>
+                    <div style="background: #f3e5f5; padding: 12px; border-radius: 8px; border-left: 4px solid #9c27b0;">
+                        <div style="color:#7b1fa2; font-weight:bold; font-size: 14px;">🤝 最佳團隊精神</div>
+                        <strong style="color: #333; font-size: 15px; display: block; margin: 5px 0;">${report.role_awards?.best_team_player?.name || '無'}</strong>
+                        <div style="font-size: 13px; color: #555;">${report.role_awards?.best_team_player?.reason || ''}</div>
+                    </div>
+                </div>
+
+                <h3 style="color:#2C3E50; border-bottom:2px solid #f0f0f0; padding-bottom:8px; margin-top:25px; font-size: 16px;">👤 個人詳細分析</h3>
+                ${individualHtml}
+
+                <div style="background: #ffebee; padding: 15px; border-radius: 8px; border: 1px solid #ffcdd2; margin-top: 25px;">
+                    <h3 style="color:#c62828; margin: 0 0 8px 0; font-size: 15px;">💡 HR 招募後續建議</h3>
+                    <p style="color:#b71c1c; font-size: 14px; margin: 0; line-height: 1.6;">${report.hr_recommendation || '目前無特別建議'}</p>
+                </div>
+            </div>
+        `;
+
+    } catch (err) {
+        console.error(err);
+        content.innerHTML = `<div style="color:#e74c3c; padding:20px; text-align:center;">連線失敗或發生不可預期的錯誤，請稍後再試。</div>`;
+    }
+};
 // ==========================================
 // 📊 職缺綜合對比大報告功能
 // ==========================================

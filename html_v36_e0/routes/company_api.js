@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const router = express.Router();
 const { createClient } = require('@supabase/supabase-js');
+const { OpenAI } = require('openai');
 
 // 🌟 建立企業端上帝模式客戶端
 const supabaseAdmin = createClient(
@@ -64,7 +65,7 @@ router.put('/profile', async (req, res) => {
 });
 
 // ==========================================
-// 🚀 求職者管理專用 API
+// 🚀 1.求職者管理專用 API
 // ==========================================
 
 // 🌟 抓取「進行中」的面試名單 (戰情室大廳專用)
@@ -110,7 +111,7 @@ router.post('/end-session', express.text({ type: '*/*' }), async (req, res) => {
 });
 
 // ==========================================
-// 🚀 撈取應徵者名單 (加入 AI 分數與合適度)
+// 🚀 2.撈取應徵者名單 (加入 AI 分數與合適度)
 // ==========================================
 router.get('/applicants', async (req, res) => {
     try {
@@ -176,14 +177,19 @@ router.get('/applicants', async (req, res) => {
 
 router.put('/applicants/:session_id/status', async (req, res) => {
     try {
-        const { status } = req.body;
+        const { status, scheduled_time, room_id } = req.body; // 🌟 接收 room_id
         const sessionId = req.params.session_id;
 
         if (status === undefined) return res.status(400).json({ success: false, error: '缺少狀態參數' });
 
+        // 🌟 準備更新資料：把時間或房間 ID 存進去
+        let updateData = { status };
+        if (scheduled_time) updateData.start_time = scheduled_time;
+        if (room_id) updateData.room_id = room_id; // 🌟 將求職者與房間綁定
+
         const { error: updateError } = await supabaseAdmin
             .from('interview_sessions')
-            .update({ status })
+            .update(updateData)
             .eq('session_id', sessionId);
         if (updateError) throw updateError;
 
@@ -218,7 +224,7 @@ router.put('/applicants/:session_id/status', async (req, res) => {
 });
 
 // ==========================================
-// 📊 職缺綜合對比大報告 API
+// 📊 3.職缺綜合對比大報告 API
 // ==========================================
 
 // 🌟 讀取已生成的職缺綜合報告 (不觸發 AI，純讀快取)
@@ -315,7 +321,8 @@ router.post('/jobs/:jobId/comparison-report', async (req, res) => {
 ${JSON.stringify(candidateList, null, 2)}
 `;
 
-        const reportJson = await callGeminiForJson(prompt);
+        // 改為呼叫 OpenAI
+        const reportJson = await callOpenAIForJson(prompt);
 
         const { error: upsertErr } = await supabaseAdmin
             .from('job_comparison_reports')
@@ -337,46 +344,41 @@ ${JSON.stringify(candidateList, null, 2)}
     }
 });
 
-// 🌟 呼叫 Gemini 產生 JSON 格式報告
-async function callGeminiForJson(prompt) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error('缺少 GEMINI_API_KEY 環境變數');
+// 🌟 呼叫 OpenAI 產生 JSON 格式報告
+async function callOpenAIForJson(prompt) {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) throw new Error('缺少 OPENAI_API_KEY 環境變數，請在 .env 檔案中設定');
 
-    const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-        {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ parts: [{ text: prompt }] }],
-                generationConfig: { responseMimeType: 'application/json' }
-            })
-        }
-    );
-
-    if (!response.ok) {
-        // 💡 友善錯誤攔截：如果遇到 429 錯誤，直接回傳白話文提示
-        if (response.status === 429) {
-            throw new Error('AI 伺服器目前較忙碌 (API 呼叫次數達免費上限)，請等待 30 秒後再重新點擊產生報告！');
-        }
-        
-        const errText = await response.text();
-        throw new Error(`Gemini API 呼叫失敗: ${errText}`);
-    }
-
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error('Gemini 未回傳有效內容');
+    const openai = new OpenAI({ apiKey: apiKey });
 
     try {
-        return JSON.parse(text.replace(/```json|```/g, '').trim());
-    } catch (e) {
-        throw new Error('AI 回傳格式無法解析為 JSON');
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o-mini", // 速度快且成本極低的強大模型
+            response_format: { type: "json_object" }, // 強制回傳 JSON 格式
+            messages: [
+                { 
+                    role: "system", 
+                    content: "你是一位資深招募顧問。請嚴格依照使用者的要求進行分析，並且務必只輸出合法的 JSON 格式，絕對不要包含任何 Markdown 標記 (如 ```json)。" 
+                },
+                { 
+                    role: "user", 
+                    content: prompt 
+                }
+            ]
+        });
+
+        const text = response.choices[0].message.content;
+        if (!text) throw new Error('OpenAI 未回傳有效內容');
+
+        return JSON.parse(text.trim());
+    } catch (error) {
+        console.error("OpenAI 發生錯誤:", error);
+        throw new Error(`AI 報告生成失敗: ${error.message}`);
     }
 }
 
 // ==========================================
-// 💬 HR 訊息中心專用 API
+// 💬 4.HR 訊息中心專用 API
 // ==========================================
 
 router.get('/chat/contacts', async (req, res) => {
@@ -414,6 +416,217 @@ router.post('/chat/:applicant_id', async (req, res) => {
         if (error) throw error;
         res.json({ success: true });
     } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ==========================================
+// 🏢 5團體面試房間 (Group Rooms) 專用 API
+// ==========================================
+
+// 1. 取得所有進行中/等待中的團面房間
+router.get('/group-rooms', async (req, res) => {
+    try {
+        const { data, error } = await supabaseAdmin
+            .from('group_rooms')
+            // 🌟 修改：加入 interview_sessions(count) 來動態計算人數
+            .select('*, jobs(job_title), interview_sessions(count)') 
+            .order('start_time', { ascending: true }); 
+
+        if (error) throw error;
+        
+        // 🌟 新增：將 Supabase 回傳的 count 格式，整理成前端原本預期的 current_count
+        const formattedData = data.map(room => ({
+            ...room,
+            current_count: room.interview_sessions?.[0]?.count || 0
+        }));
+
+        res.json({ success: true, data: formattedData });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 2. 新增一個團面房間
+router.post('/group-rooms', async (req, res) => {
+    try {
+        const { start_time, max_capacity, session_id } = req.body;
+        if (!start_time) return res.status(400).json({ success: false, error: '缺少開始時間' });
+
+        let jobId = null;
+        if (session_id) {
+            const { data: sessionData } = await supabaseAdmin
+                .from('interview_sessions')
+                .select('job_id')
+                .eq('session_id', session_id)
+                .single();
+            if (sessionData) jobId = sessionData.job_id;
+        }
+
+        const { data, error } = await supabaseAdmin
+            .from('group_rooms')
+            .insert([{ 
+                start_time, 
+                max_capacity: max_capacity || 6, 
+                // 🌟 修改：已經刪除 current_count: 0，交給動態關聯計算
+                status: '等待中',
+                job_id: jobId 
+            }])
+            .select();
+
+        if (error) throw error;
+        res.json({ success: true, data: data[0] });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+// ==========================================
+// 📅 6.面試場次管理專用 API (0room_manage.html)
+// ==========================================
+
+// 1. 取得所有場次與被排入的應徵者名單
+router.get('/manage-sessions', async (req, res) => {
+    try {
+        const { data, error } = await supabaseAdmin
+            .from('group_rooms')
+            .select(`
+                room_id,
+                start_time,
+                max_capacity,
+                jobs ( job_title ),
+                interview_sessions (
+                    applicants ( name )
+                )
+            `) // 🌟 修改：已經從 select 中移除了 current_count
+            .order('start_time', { ascending: true });
+
+        if (error) throw error;
+        
+        // 🌟 新增：利用撈出來的應徵者名單陣列長度，動態補上 current_count 給前端
+        const formattedData = data.map(room => ({
+            ...room,
+            current_count: room.interview_sessions ? room.interview_sessions.length : 0
+        }));
+
+        res.json({ success: true, data: formattedData });
+    } catch (err) {
+        console.error('撈取場次失敗:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 2. 更新面試場次 (時間、人數)
+router.put('/group-rooms/:id', async (req, res) => {
+    try {
+        const roomId = req.params.id;
+        const { start_time, max_capacity } = req.body;
+        
+        const { error } = await supabaseAdmin
+            .from('group_rooms')
+            .update({ start_time, max_capacity })
+            .eq('room_id', roomId);
+            
+        if (error) throw error;
+        res.json({ success: true, message: '場次更新成功' });
+    } catch (err) {
+        console.error('更新場次失敗:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 3. 刪除面試場次
+router.delete('/group-rooms/:id', async (req, res) => {
+    try {
+        const roomId = req.params.id;
+        
+        // 🌟 防呆安全機制：先將原本綁定在這個房間的應徵者解綁，並退回狀態
+        await supabaseAdmin
+            .from('interview_sessions')
+            .update({ room_id: null, status: 'status-1' })
+            .eq('room_id', roomId);
+
+        // 再刪除房間
+        const { error } = await supabaseAdmin
+            .from('group_rooms')
+            .delete()
+            .eq('room_id', roomId);
+            
+        if (error) throw error;
+        res.json({ success: true, message: '場次已刪除' });
+    } catch (err) {
+        console.error('刪除場次失敗:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ==========================================
+// 👥 團體面試專屬：單場多人面試綜合對比報告 API (逐字稿直讀版)
+// ==========================================
+
+router.post('/group-rooms/:roomId/report', async (req, res) => {
+    try {
+        const { roomId } = req.params;
+
+        // 1. 從 interview_sessions 找出這個房間裡的所有應徵者名單
+        const { data: sessions, error: sessionsErr } = await supabaseAdmin
+            .from('interview_sessions')
+            .select(`
+                session_id,
+                applicants ( name )
+            `)
+            .eq('room_id', roomId);
+
+        if (sessionsErr) throw sessionsErr;
+        if (!sessions || sessions.length === 0) {
+            return res.status(400).json({ success: false, error: '此團面房間尚無應徵者參與。' });
+        }
+
+        const candidateNames = sessions.map(s => s.applicants?.name).filter(Boolean);
+        const sessionIds = sessions.map(s => s.session_id);
+
+        // 2. 抓取這場團體面試的「共同逐字稿」
+        // 因為團面時大家的對話都會寫入 transcripts，我們只要撈取該房間內最新的一份完整紀錄即可
+        const { data: transcripts, error: transErr } = await supabaseAdmin
+            .from('transcripts')
+            .select('text_content')
+            .in('session_id', sessionIds)
+            .order('created_at', { ascending: false })
+            .limit(1); 
+
+        if (transErr) throw transErr;
+        if (!transcripts || transcripts.length === 0) {
+            return res.status(400).json({ success: false, error: '此場團體面試尚無完整的對話逐字稿，無法進行 AI 分析。' });
+        }
+
+        const groupTranscript = transcripts[0].text_content;
+
+        // 3. 組合全新 Prompt，直接餵給 OpenAI 逐字稿，要求它一次性評估所有人
+        const prompt = `
+你是一位資深招募顧問。這是一場「多人團體面試」的完整對話逐字稿。
+參與這場面試的應徵者有：${candidateNames.join('、')}。
+
+請直接閱讀以下對話紀錄，觀察他們在面試中的互動、回答邏輯與專業度，並進行橫向對比。
+請「只回傳 JSON」，不要有任何 Markdown 符號 (如 \`\`\`json)，格式如下：
+{
+  "room_overview": "針對這場團體面試的整體氣氛與候選人總體素質的簡短總評（80字內）",
+  "ranking": [
+    { "name": "姓名", "overall_score": 數字(0-100), "reason": "在此場團面中的相對優勢、發言質量或具體表現" }
+  ],
+  "best_communicator": "本場團面中溝通表達或團隊互動最佳的人選姓名與理由",
+  "standout_performer": "本場團面中技術或專業回答最突出的人選姓名與理由"
+}
+
+【團體面試對話逐字稿】：
+${groupTranscript}
+`;
+
+        // 4. 呼叫 OpenAI (即時生成，完全不依賴個人報告)
+        const reportJson = await callOpenAIForJson(prompt);
+
+        res.json({ success: true, report: reportJson, applicant_count: candidateNames.length });
+
+    } catch (err) {
+        console.error('生成團面報告失敗:', err);
         res.status(500).json({ success: false, error: err.message });
     }
 });
