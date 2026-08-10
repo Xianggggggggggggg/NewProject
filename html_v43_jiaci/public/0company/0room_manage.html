@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <title>面試場次管理 - CareerLab</title>
+
+    <link rel="stylesheet" href="../user/css/style.css">
+    <link rel="stylesheet" href="0css/0company.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        /* 🌟 職缺群組標題 */
+        .job-group-header {
+            font-size: 22px;
+            font-weight: bold;
+            color: var(--primary-green);
+            border-bottom: 2px solid rgba(121, 152, 81, 0.2);
+            padding-bottom: 10px;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* 🌟 單一場次橫列 (包含卡片與按鈕) */
+        .session-row {
+            display: flex;
+            align-items: stretch;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        /* 🌟 場次資訊卡片 (左側) */
+        .session-card {
+            flex: 1;
+            background: white;
+            border-radius: 12px;
+            padding: 20px 25px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: 0.3s;
+            border: 2px solid transparent;
+        }
+
+        .session-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.08);
+            border-color: rgba(121, 152, 81, 0.3);
+        }
+
+        /* 卡片上半部：時間與人數 */
+        .session-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+
+        .session-time {
+            font-size: 20px;
+            font-weight: bold;
+            color: var(--text-main);
+            letter-spacing: 1px;
+        }
+
+        .session-count {
+            font-size: 16px;
+            font-weight: bold;
+            color: var(--text-sub);
+            background: #f0f0f0;
+            padding: 6px 15px;
+            border-radius: 20px;
+        }
+
+        /* 卡片下半部：應徵者名單 */
+        .session-applicants {
+            font-size: 14px;
+            color: #666;
+            background: #f9fbf9;
+            padding: 10px 15px;
+            border-radius: 8px;
+            border-left: 4px solid var(--primary-green);
+            line-height: 1.6;
+        }
+
+        /* 🌟 操作按鈕群組 (右側) */
+        .action-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .btn-action-square {
+            width: 60px;
+            height: 100%;
+            min-height: 80px;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: 0.3s;
+            color: white;
+        }
+
+        .btn-enter {
+            background: var(--primary-green);
+        }
+
+        .btn-enter:hover {
+            background: #63803f;
+            transform: scale(1.05);
+        }
+
+        .btn-edit {
+            background: #3498db;
+        }
+
+        .btn-edit:hover {
+            background: #2980b9;
+            transform: scale(1.05);
+        }
+
+        .btn-delete {
+            background: #e74c3c;
+        }
+
+        .btn-report {
+            background: #1D9E75;
+        }
+
+        .btn-report:hover {
+            background: #15805e;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="topbar-container"></div>
+    <div id="sidebar-container"></div>
+
+    <div class="section-container active" style="align-items: center; padding-top: 40px;">
+        <div style="max-width: 1000px; width: 100%;">
+
+            <h2 style="color: var(--text-main); margin-bottom: 10px; font-size: 32px; text-align: center;">📅 面試場次管理
+            </h2>
+            <p style="text-align: center; color: var(--text-sub); margin-bottom: 40px;">管理所有已建立的單人與團體面試場次</p>
+
+            <!-- 🌟 場次列表容器 -->
+            <div id="sessions-container">
+                <div style="text-align: center; color: #888; padding: 40px;">載入場次中...</div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- 🌟 編輯場次專用彈窗 -->
+    <div id="edit-room-overlay" class="modal-overlay">
+        <div class="register-modal resume-form-modal custom-modal-size" style="max-width: 400px;">
+            <button class="modal-close-btn"
+                onclick="document.getElementById('edit-room-overlay').style.display='none'">✖</button>
+            <h2 class="modal-main-title" style="color: #3498db; margin-bottom: 10px;">✏️ 編輯面試場次</h2>
+
+            <input type="hidden" id="edit-room-id">
+
+            <div class="form-group" style="margin-bottom: 15px; margin-top: 20px;">
+                <label
+                    style="text-align: left; display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-main);">面試日期</label>
+                <input type="date" id="edit-room-date" class="reg-input" style="margin-bottom: 0;">
+            </div>
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label
+                    style="text-align: left; display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-main);">面試時間</label>
+                <input type="time" id="edit-room-time" class="reg-input" style="margin-bottom: 0;">
+            </div>
+            <div class="form-group" style="margin-bottom: 25px;">
+                <label
+                    style="text-align: left; display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-main);">最大容納人數</label>
+                <input type="number" id="edit-room-capacity" class="reg-input" min="1" max="20"
+                    style="margin-bottom: 0;">
+            </div>
+
+            <button
+                style="background: #3498db; color: white; border: none; width: 100%; padding: 15px; font-size: 16px; border-radius: 10px; font-weight: bold; cursor: pointer;"
+                onclick="submitEditRoom()">確認修改</button>
+        </div>
+    </div>
+
+    <script src="0js/0company.js"></script>
+
+    <!-- 🌟 頁面專屬邏輯 (真實資料庫串接版) -->
+    <script>
+        window.addEventListener('DOMContentLoaded', () => {
+            fetchManageSessions();
+        });
+
+        // 1. 從後端撈取真實場次資料
+        async function fetchManageSessions() {
+            const container = document.getElementById('sessions-container');
+            container.innerHTML = '<div style="text-align: center; color: #888; padding: 40px;">載入場次中...</div>';
+
+            try {
+                const res = await fetch('/api/company/manage-sessions');
+                const result = await res.json();
+
+                if (result.success) {
+                    renderManageSessions(result.data);
+                } else {
+                    container.innerHTML = `<div style="text-align: center; color: red; padding: 40px;">載入失敗：${result.error}</div>`;
+                }
+            } catch (err) {
+                console.error(err);
+                container.innerHTML = '<div style="text-align: center; color: red; padding: 40px;">系統連線錯誤</div>';
+            }
+        }
+
+        // 2. 將資料按「職缺」分組並渲染畫面
+        function renderManageSessions(data) {
+            const container = document.getElementById('sessions-container');
+            container.innerHTML = '';
+
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: #888; padding: 40px;">目前尚無任何面試場次。</div>';
+                return;
+            }
+
+            // 🌟 透過 JS 進行資料分組 (Group by job_title)
+            const groupedData = {};
+            data.forEach(room => {
+                const jobTitle = room.jobs?.job_title || '未指定職缺';
+                if (!groupedData[jobTitle]) groupedData[jobTitle] = [];
+
+                // 將多個應徵者的物件，轉換成單純的姓名陣列
+                const applicantsList = (room.interview_sessions || [])
+                    .map(session => session.applicants?.name || '未知應徵者');
+
+                groupedData[jobTitle].push({
+                    room_id: room.room_id,
+                    start_time: room.start_time,
+                    current_count: room.current_count || 0,
+                    max_capacity: room.max_capacity || 6,
+                    applicants: applicantsList
+                });
+            });
+
+            // 🌟 開始繪製畫面
+            for (const [jobTitle, sessions] of Object.entries(groupedData)) {
+                // 職缺標題
+                const header = document.createElement('div');
+                header.className = 'job-group-header';
+                header.innerHTML = `<span>🎯</span> ${jobTitle}`;
+                container.appendChild(header);
+
+                // 該職缺下的所有場次
+                sessions.forEach(session => {
+                    const isFull = session.current_count >= session.max_capacity;
+                    const d = new Date(session.start_time);
+                    const fmtTime = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+                    const applicantsText = session.applicants.length > 0
+                        ? `👤 <b>已排定應徵者：</b>${session.applicants.join('、')}`
+                        : `👤 <b style="color:#aaa;">目前尚無應徵者排入此場次</b>`;
+
+                    const row = document.createElement('div');
+                    row.className = 'session-row';
+
+                    row.innerHTML = `
+                    <div class="session-card">
+                        <div class="session-top">
+                            <span class="session-time">${fmtTime}</span>
+                            <span class="session-count" style="${isFull ? 'color: red;' : ''}">${session.current_count} / ${session.max_capacity}</span>
+                        </div>
+                        <div class="session-applicants">
+                            ${applicantsText}
+                        </div>
+                    </div>
+                    
+                    <div class="action-group">
+                        <button class="btn-action-square btn-enter" onclick="enterRoom('${session.room_id}', ${session.max_capacity})" title="進入戰情室">
+                            <span style="font-size: 24px;">🚪</span>進入
+                        </button>
+                        <button class="btn-action-square btn-edit" onclick="openEditModal('${session.room_id}', '${session.start_time}', ${session.max_capacity})" title="編輯時間與人數">
+                            <span style="font-size: 20px;">✏️</span>編輯
+                        </button>
+                        <button class="btn-action-square btn-report" onclick="generateGroupReport('${session.room_id}')" title="產生/檢視團面報告" style="margin-left: 8px;">
+                        <span style="font-size: 20px;">📊</span>報告
+                        </button>
+                        <button class="btn-action-square btn-delete" onclick="deleteRoom('${session.room_id}')" title="刪除此場次">
+                            <span style="font-size: 20px;">🗑️</span>刪除
+                        </button>
+                    </div>
+                `;
+                    container.appendChild(row);
+                });
+            }
+        }
+
+        // 3. 進入房間邏輯
+        function enterRoom(roomId, maxCapacity) {
+            if (maxCapacity > 1) {
+                window.location.href = `0live_group.html?session_id=${roomId}`;
+            } else {
+                window.location.href = `0live.html?session_id=${roomId}`;
+            }
+        }
+
+        // 4. 打開編輯彈窗
+        function openEditModal(roomId, startTime, capacity) {
+            document.getElementById('edit-room-overlay').style.display = 'flex';
+            document.getElementById('edit-room-id').value = roomId;
+
+            const d = new Date(startTime);
+            document.getElementById('edit-room-date').value = d.toISOString().split('T')[0];
+            document.getElementById('edit-room-time').value = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+            document.getElementById('edit-room-capacity').value = capacity;
+        }
+
+        // 5. 送出編輯 (PUT API)
+        async function submitEditRoom() {
+            const roomId = document.getElementById('edit-room-id').value;
+            const dateVal = document.getElementById('edit-room-date').value;
+            const timeVal = document.getElementById('edit-room-time').value;
+            const capacity = document.getElementById('edit-room-capacity').value;
+
+            if (!dateVal || !timeVal || !capacity) return alert('請完整填寫所有欄位！');
+
+            const scheduledTime = new Date(`${dateVal}T${timeVal}`).toISOString();
+
+            try {
+                const res = await fetch(`/api/company/group-rooms/${roomId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ start_time: scheduledTime, max_capacity: parseInt(capacity, 10) })
+                });
+                const result = await res.json();
+
+                if (result.success) {
+                    alert('✅ 面試場次已成功更新！');
+                    document.getElementById('edit-room-overlay').style.display = 'none';
+                    fetchManageSessions(); // 重新載入最新資料
+                } else {
+                    alert('更新失敗：' + result.error);
+                }
+            } catch (err) {
+                alert('系統連線錯誤');
+            }
+        }
+
+        // 6. 刪除房間 (DELETE API)
+        async function deleteRoom(roomId) {
+            if (confirm("⚠️ 確定要刪除這個面試場次嗎？\n刪除後，已排入此場次的應徵者狀態將會退回至「已投遞履歷」。")) {
+                try {
+                    const res = await fetch(`/api/company/group-rooms/${roomId}`, { method: 'DELETE' });
+                    const result = await res.json();
+
+                    if (result.success) {
+                        alert('🗑️ 場次已成功刪除。');
+                        fetchManageSessions(); // 重新載入最新資料
+                    } else {
+                        alert('刪除失敗：' + result.error);
+                    }
+                } catch (err) {
+                    alert('系統連線錯誤');
+                }
+            }
+        }
+
+        function generateGroupReport(roomId) {
+            alert(`📊 準備查看房間 ${roomId} 的團面報告`);
+            // TODO: 這裡可以改成實際導向報告頁面或開啟報告彈窗
+        }
+    </script>
+    <!-- ========================================== -->
+    <!-- 👥 團體面試綜合對比報告 Modal (新增外掛) -->
+    <!-- ========================================== -->
+    <div id="group-report-overlay" class="modal-overlay" style="display: none; z-index: 9999;">
+        <div class="register-modal resume-form-modal custom-modal-size" style="width: 800px; max-width: 90%;">
+            <button class="modal-close-btn" onclick="closeGroupReportModal()">✖</button>
+            <h2 class="modal-main-title">👥 團體面試綜合對比報告</h2>
+            <div id="group-report-content"></div>
+        </div>
+    </div>
+</body>
+
+</html>
