@@ -176,7 +176,6 @@ function setupGroupWebSocket(options) {
                     setup: {
                         model: MODEL_NAME,
                         systemInstruction: { parts: [{ text: hrPrompt }] },
-                        tools: hrTools,
                         generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } } },
                         inputAudioTranscription: {},
                         outputAudioTranscription: {},
@@ -194,7 +193,6 @@ function setupGroupWebSocket(options) {
                     setup: {
                         model: MODEL_NAME,
                         systemInstruction: { parts: [{ text: managerPrompt }] },
-                        tools: managerTools,
                         generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Enceladus" } } } },
                         inputAudioTranscription: {},
                         outputAudioTranscription: {},
@@ -272,14 +270,45 @@ function setupGroupWebSocket(options) {
                         ? roomState.hrSpeechBuffer
                         : roomState.managerSpeechBuffer;
 
-                    const mentionedCandidate = roomState.candidatesList?.find(c =>
-                        currentSpeechBuffer.includes(c.name)
-                    );
+                    // ⭐ 先把 AI 逐字稿轉成統一格式
+                    let candidateDetectText = convert(currentSpeechBuffer).replace(/\s+/g, '');
 
-                    if (mentionedCandidate && roomState.currentCandidateResumeId !== mentionedCandidate.resumeId) {
+                    // ⭐ 姓名仍以資料庫原始姓名為準
+                    for (const candidate of roomState.candidatesList || []) {
+                        const convertedName = convert(candidate.name).replace(/\s+/g, '');
+
+                        if (convertedName !== candidate.name) {
+                            candidateDetectText = candidateDetectText.replaceAll(
+                                convertedName,
+                                candidate.name
+                            );
+                        }
+                    }
+
+                    // ⭐ 不可以用 find() 找第一個名字
+                    // 要找 AI 這句話「最後提到的應徵者」
+                    let mentionedCandidate = null;
+                    let lastMentionIndex = -1;
+
+                    for (const candidate of roomState.candidatesList || []) {
+                        const index = candidateDetectText.lastIndexOf(candidate.name);
+
+                        if (index > lastMentionIndex) {
+                            lastMentionIndex = index;
+                            mentionedCandidate = candidate;
+                        }
+                    }
+
+                    if (
+                        mentionedCandidate &&
+                        roomState.currentCandidateResumeId !== mentionedCandidate.resumeId
+                    ) {
                         roomState.currentCandidateResumeId = mentionedCandidate.resumeId;
                         roomState.currentCandidateName = mentionedCandidate.name;
-                        console.log(`🎯 現在輪到：${mentionedCandidate.name}`);
+
+                        console.log(
+                            `🎯 發言權切換 → ${mentionedCandidate.name} (${mentionedCandidate.resumeId})`
+                        );
                     }
 
                     // 1. 取得對應的舊計時器並直接清除
@@ -439,7 +468,7 @@ function setupGroupWebSocket(options) {
                             // 存入面試紀錄
                             addLog(
                                 roomState.sessionId,
-                                'user',
+                                `candidate:${roomState.currentCandidateName || '應徵者'}`,
                                 finalUserText,
                                 "speech"
                             );
@@ -655,12 +684,30 @@ function setupGroupWebSocket(options) {
                         // AI 還沒結束時，才把聲音送給 Gemini
                         if (!room.aiPhaseFinished && room.currentInterviewer !== 'WAITING_HUMAN') {
 
-                            // ⭐ AI 只接收目前被點名的應徵者
+                            /*// ⭐ 正常版 暫時更改
                             if (
                                 clientWs.clientType === 'candidate' &&
                                 room.currentCandidateResumeId &&
                                 clientWs.resumeId !== room.currentCandidateResumeId
                             ) {
+                                return;
+                            }*/
+                            if (
+                                clientWs.clientType === 'candidate' &&
+                                room.currentCandidateResumeId &&
+                                clientWs.resumeId !== room.currentCandidateResumeId
+                            ) {
+                                // ⭐ 測試用：每 1 秒最多印一次，避免 Terminal 洗版
+                                const now = Date.now();
+
+                                if (!clientWs.lastBlockedLog || now - clientWs.lastBlockedLog > 1000) {
+                                    console.log(
+                                        `🔇 AI 暫不接收「${clientWs.candidateName}」的聲音，目前輪到「${room.currentCandidateName}」`
+                                    );
+
+                                    clientWs.lastBlockedLog = now;
+                                }
+
                                 return;
                             }
 
