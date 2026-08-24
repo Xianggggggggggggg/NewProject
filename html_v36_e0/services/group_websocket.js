@@ -69,6 +69,7 @@ function setupGroupWebSocket(options) {
                         if (item.role === 'ai_HR') speakerName = 'HR 面試官';
                         if (item.role === 'ai_MANAGER') speakerName = '部門主管';
                         if (item.role === 'human_HR') speakerName = '真人 HR';
+                        if (item.role?.startsWith('candidate:')) speakerName = item.role.replace('candidate:', '');
                         return `${speakerName}：${item.content}`;
                     })
                     .join('\n\n');
@@ -127,6 +128,7 @@ function setupGroupWebSocket(options) {
                 3. **禁止亂跳與搶答**：絕對不允許開放自由搶答，也絕對不能跳號。
                 4. 每次發言【只能問一個問題】且【只能指定一個人】。
                 5. 你的對話對象只有現場的應徵者們，絕對不要與部門主管對話。
+                6. 每次指定回答者時，必須完整念出該應徵者的姓名。禁止只說「下一位」、「第二位」、「換下一位」。
 
                 【交接規則】：
                 - 在尚未收到系統交接指令前，請持續按照上述規則進行。收到指令後，做簡短回饋並做過場交接。
@@ -156,6 +158,7 @@ function setupGroupWebSocket(options) {
                    - 必須等第 1 位講完 $\rightarrow$ 換第 2 位講同一題 $\rightarrow$ 以此類推，直到所有人輪完這題，才能出下一題。
                 3. 禁止搶答與亂跳號。每次發言【一次只能問一個問題】且【只能指定一個人回答】。
                 4. 絕對不要與 HR 對話。
+                5. 每次指定回答者時，必須完整念出該應徵者的姓名。禁止只說「下一位」、「第二位」、「換下一位」。
 
                 【交接規則】：
                 - 未收到交接指令前持續依序點名提問。收到指令後不提問，做簡短總結並交還 HR。
@@ -180,7 +183,7 @@ function setupGroupWebSocket(options) {
 
                         realtimeInputConfig: {
                             automaticActivityDetection: {
-                                silenceDurationMs: 5000
+                                silenceDurationMs: 3000
 } }
                     }
                 }));
@@ -198,7 +201,7 @@ function setupGroupWebSocket(options) {
 
                         realtimeInputConfig: {
                             automaticActivityDetection: {
-                                silenceDurationMs: 5000
+                                silenceDurationMs: 3000
 } }
                     }
                 }));
@@ -265,6 +268,19 @@ function setupGroupWebSocket(options) {
                     } else {
                         roomState.managerSpeechBuffer += response.serverContent.outputTranscription.text;
                     }
+                    const currentSpeechBuffer = role === 'HR'
+                        ? roomState.hrSpeechBuffer
+                        : roomState.managerSpeechBuffer;
+
+                    const mentionedCandidate = roomState.candidatesList?.find(c =>
+                        currentSpeechBuffer.includes(c.name)
+                    );
+
+                    if (mentionedCandidate && roomState.currentCandidateResumeId !== mentionedCandidate.resumeId) {
+                        roomState.currentCandidateResumeId = mentionedCandidate.resumeId;
+                        roomState.currentCandidateName = mentionedCandidate.name;
+                        console.log(`🎯 現在輪到：${mentionedCandidate.name}`);
+                    }
 
                     // 1. 取得對應的舊計時器並直接清除
                     const currentTimeout = role === 'HR' ? roomState.hrFlushTimeout : roomState.managerFlushTimeout;
@@ -274,8 +290,19 @@ function setupGroupWebSocket(options) {
 
                     const newTimeout = setTimeout(() => {
                         const bufferText = role === 'HR' ? roomState.hrSpeechBuffer : roomState.managerSpeechBuffer;
-                        const finalSentence = convert(bufferText.trim()).replace(/\s+/g, '');
+                        let finalSentence = convert(bufferText.trim()).replace(/\s+/g, '');
 
+                        // ⭐ 姓名以資料庫為準，避免 OpenCC 把「郁」變成「鬱」之類
+                        for (const candidate of roomState.candidatesList || []) {
+                            const convertedName = convert(candidate.name);
+
+                            if (convertedName !== candidate.name) {
+                                finalSentence = finalSentence.replaceAll(
+                                    convertedName,
+                                    candidate.name
+                                );
+                            }
+                        }
                         if (finalSentence) {
                             const aiMsg = JSON.stringify({
                                 customType: 'ai_transcript_final',
@@ -420,6 +447,7 @@ function setupGroupWebSocket(options) {
                             // ⭐ 廣播給這個房間的所有前端
                             const userMsg = JSON.stringify({
                                 customType: 'user_transcript',
+                                candidateName: roomState.currentCandidateName || '應徵者',
                                 text: finalUserText
                             });
 
@@ -432,7 +460,7 @@ function setupGroupWebSocket(options) {
                                 }
                             });
 
-                        }, 4000);
+                        }, 1000);
                     }
                 }                // 應徵者發言邏輯
                 if (
@@ -598,6 +626,22 @@ function setupGroupWebSocket(options) {
                     currentSessionId = clientWs.sessionId;
                 }
 
+                // 👑 真人 HR 進入房間
+                if (parsedMsg.type === 'hr_join_room') {
+                    const room = activeRooms.get(parsedMsg.sessionId);
+
+                    clientWs.clientType = 'hr';
+
+                    if (room) {
+                        clientWs.send(JSON.stringify({
+                            type: 'room_ready_state',
+                            candidates: room.candidatesList.map(c => c.name)
+                        }));
+                    }
+
+                    return;
+                }
+
                 // 3. 處理語音輸入 (realtimeInput)
                 if (parsedMsg.realtimeInput) {
                     // 如果到這裡還是沒有房間 ID，才報警
@@ -610,6 +654,16 @@ function setupGroupWebSocket(options) {
                     if (room) {
                         // AI 還沒結束時，才把聲音送給 Gemini
                         if (!room.aiPhaseFinished && room.currentInterviewer !== 'WAITING_HUMAN') {
+
+                            // ⭐ AI 只接收目前被點名的應徵者
+                            if (
+                                clientWs.clientType === 'candidate' &&
+                                room.currentCandidateResumeId &&
+                                clientWs.resumeId !== room.currentCandidateResumeId
+                            ) {
+                                return;
+                            }
+
                             let targetWs = null;
                             if (room.currentInterviewer === 'HR') targetWs = room.hrWs;
                             else if (room.currentInterviewer === 'MANAGER') targetWs = room.managerWs;
@@ -760,7 +814,8 @@ function setupGroupWebSocket(options) {
                     console.log(`🎤 [應徵者插話文字] ${parsedMsg.text}`);
 
                     const textMsg = JSON.stringify({
-                        customType: 'user_transcript', // 標記為應徵者講的話
+                        customType: 'user_transcript',
+                        candidateName: clientWs.candidateName || '應徵者',
                         text: parsedMsg.text
                     });
 
@@ -770,11 +825,9 @@ function setupGroupWebSocket(options) {
                             c.send(textMsg);
                         }
                     });
-
-                    // 存入對話紀錄
                     addLog(
                         parsedMsg.sessionId,
-                        "user",
+                        `candidate:${clientWs.candidateName || '應徵者'}`,
                         parsedMsg.text,
                         "speech"
                     );                    return;
@@ -783,120 +836,184 @@ function setupGroupWebSocket(options) {
                 // ==========================================
                 // 🌟 初始化「多人團體面試」或加入現有房間
                 // ==========================================
-                if (parsedMsg.customType === 'init_group_interview') {
-                    const { sessionId, candidateIds, applicantIds, position, interview_type, jobId } = parsedMsg;
+                if (parsedMsg.type === 'candidate_ready') {
+                    const { sessionId, resumeId, position, interview_type, jobId } = parsedMsg;
+
                     currentSessionId = sessionId;
                     clientWs.sessionId = sessionId;
+                    clientWs.clientType = 'candidate';
+                    clientWs.resumeId = resumeId;
 
-                    if (activeRooms.has(sessionId)) {
-                        console.log(`👥 [多人模式] 使用者已加入已存在的房間 [${sessionId}]`);
-                        clientWs.sessionId = sessionId;
+                    let room = activeRooms.get(sessionId);
+
+                    if (!room) {
+                        room = {
+                            sessionId,
+                            hrWs: null,
+                            managerWs: null,
+                            currentInterviewer: 'WAITING_START',
+                            previousInterviewer: 'HR',
+                            isInterviewEnded: false,
+                            aiStarted: false,
+                            aiPhaseFinished: false,
+
+                            position,
+                            interview_type,
+                            jobId,
+                            candidatesList: [],
+                            currentCandidateResumeId: null,
+                            currentCandidateName: null,
+
+                            hrRoundCount: 0,
+                            managerRoundCount: 0,
+                            hrTargetRounds: 2,
+                            managerTargetRounds: 3,
+
+                            isHRWrappingUp: false,
+                            isManagerWrappingUp: false,
+                            isFinalStage: false,
+
+                            transcript: [],
+                            hrSpeechBuffer: "",
+                            managerSpeechBuffer: "",
+                            userSpeechBuffer: "",
+                            hrFlushTimeout: null,
+                            managerFlushTimeout: null,
+                            userFlushTimeout: null
+                        };
+
+                        activeRooms.set(sessionId, room);
+                    }
+
+                    // AI 已經開始就不再自動加進正式 AI 名單
+                    if (room.aiStarted) {
+                        clientWs.send(JSON.stringify({ type: 'candidate_late_join' }));
                         return;
                     }
 
-                    // 在 init_group_interview 的區塊中
-                    const roomState = {
-                        sessionId: sessionId, // 存入 ID
-                        hrWs: null,
-                        managerWs: null,
-
-                        // 🌟 原本的區域變數全部變成 roomState 的屬性
-                        currentInterviewer: 'HR',
-                        previousInterviewer: 'HR',
-                        isInterviewEnded: false,
-
-                        hrRoundCount: 0,
-                        managerRoundCount: 0,
-                        hrTargetRounds: 2,
-                        managerTargetRounds: 3,
-
-                        isHRWrappingUp: false,
-                        isManagerWrappingUp: false,
-                        isFinalStage: false,
-                        aiPhaseFinished: false,
-
-                        transcript: [],
-                        hrSpeechBuffer: "",
-                        managerSpeechBuffer: "",
-                        // ⭐ 應徵者語音轉文字暫存
-                        userSpeechBuffer: "",
-                        hrFlushTimeout: null,
-                        managerFlushTimeout: null,
-                        // ⭐ 應徵者文字整理計時器
-                        userFlushTimeout: null
-                    };
-                    activeRooms.set(sessionId, roomState);
-
-                    await supabase.from('interview_sessions').update({
-                        applied_position: position,
-                        interview_type: interview_type,
-                        status: '進行中'
-                    }).eq('session_id', currentSessionId);
-
-                    // 1. 優先從 applicants 資料表抓取真實姓名 (applicants.name)
-                    let candidatesList = [];
-                    let candidatesInfoText = "";
-
-                    const targetApplicantIds = applicantIds || candidateIds;
-
-                    if (Array.isArray(targetApplicantIds) && targetApplicantIds.length > 0) {
-                        const { data: resumesData, error: resumeErr } = await supabase
+                    if (resumeId && !room.candidatesList.some(c => c.resumeId === resumeId)) {
+                        const { data: resume, error } = await supabase
                             .from('resumes')
-                            .select(`
-                *,
-                applicants ( name )
-            `)
-                            .in('resume_id', targetApplicantIds);
+                            .select(`*, applicants ( name )`)
+                            .eq('resume_id', resumeId)
+                            .single();
 
-                        if (resumeErr) {
-                            console.error("❌ 撈取履歷發生錯誤:", resumeErr);
+                        if (!error && resume) {
+                            const candidate = {
+                                resumeId: resume.resume_id,
+                                id: resume.applicant_id,
+                                name: resume.applicants?.name || '應徵者',
+                                education: resume.education || '無',
+                                workExperience: resume.work_experience || '無'
+                            };
+
+                            room.candidatesList.push(candidate);
+                            clientWs.candidateName = candidate.name;
+
+                            console.log(`✅ ${candidate.name} 已準備`);
                         }
+                    }
 
-                        if (resumesData && resumesData.length > 0) {
-                            candidatesList = resumesData.map((r, index) => ({
-                                name: r.applicants?.name || `應徵者${index + 1}`,
-                                id: r.applicant_id
+                    const candidate = room.candidatesList.find(c => c.resumeId === resumeId);
+                    if (candidate) clientWs.candidateName = candidate.name;
+
+                    await supabase.from('interview_sessions')
+                        .update({ status: '進行中' })
+                        .eq('session_id', sessionId);
+
+                    const readyNames = room.candidatesList.map(c => c.name);
+
+                    wss.clients.forEach(c => {
+                        if (c.readyState === WebSocket.OPEN && c.sessionId === sessionId) {
+                            c.send(JSON.stringify({
+                                type: 'room_ready_state',
+                                candidates: readyNames
                             }));
-
-                            candidatesInfoText = resumesData.map((r, index) =>
-                                `【應徵者 ${index + 1}】：${r.applicants?.name || '未提供姓名'}\n學歷：${r.education || '無'}\n經歷：${r.work_experience || '無'}\n`
-                            ).join('\n');
                         }
+                    });
+
+                    clientWs.send(JSON.stringify({
+                        type: 'candidate_ready_confirmed',
+                        candidateName: clientWs.candidateName || '應徵者'
+                    }));
+
+                    return;
+                }
+                if (parsedMsg.type === 'start_ai_interview') {
+                    const room = activeRooms.get(parsedMsg.sessionId);
+
+                    if (!room || room.candidatesList.length === 0) {
+                        clientWs.send(JSON.stringify({
+                            type: 'start_ai_error',
+                            message: '目前沒有已準備的應徵者'
+                        }));
+                        return;
                     }
 
-                    if (candidatesList.length === 0) {
-                        candidatesList = [{ name: "應徵者" }];
-                        candidatesInfoText = "目前線上僅有一位應徵者進行面試。";
-                    }
+                    if (room.aiStarted) return;
 
-                    console.log(`👥 [多人面試初始化] 成功載入實際應徵者人數: ${candidatesList.length} 人，名單:`, candidatesList.map(c => c.name));
+                    room.aiStarted = true;
+                    room.currentInterviewer = 'HR';
 
-                    // 2. 抓取職缺資訊
+                    const candidatesList = room.candidatesList;
+
+                    const candidatesInfoText = candidatesList.map((c, index) =>
+                        `【應徵者 ${index + 1}】：${c.name}\n學歷：${c.education}\n經歷：${c.workExperience}\n`
+                    ).join('\n');
+
+                    // ⭐ 第一位先取得 AI 發言權
+                    room.currentCandidateResumeId = candidatesList[0].resumeId;
+                    room.currentCandidateName = candidatesList[0].name;
+
                     let jobDetailsText = "無特定職缺資料";
-                    if (jobId) {
-                        const { data: jobData } = await supabase.from('jobs').select('job_title, job_description, requirements').eq('job_id', jobId).single();
+
+                    if (room.jobId) {
+                        const { data: jobData } = await supabase
+                            .from('jobs')
+                            .select('job_title, job_description, requirements')
+                            .eq('job_id', room.jobId)
+                            .single();
+
                         if (jobData) {
-                            jobDetailsText = `【工作內容】：\n${jobData.job_description}\n\n【條件要求】：\n${jobData.requirements}`;
+                            jobDetailsText =
+                                `【工作內容】：\n${jobData.job_description}\n\n【條件要求】：\n${jobData.requirements}`;
                         }
                     }
 
-                    // 3. 抓取公司資料
                     let companyContext = "無特定公司資料";
-                    const { data: companyData } = await supabase.from('Company_Profile').select('company_name, company_info').eq('id', 1).single();
+
+                    const { data: companyData } = await supabase
+                        .from('Company_Profile')
+                        .select('company_name, company_info')
+                        .eq('id', 1)
+                        .single();
+
                     if (companyData) {
-                        companyContext = `【公司名稱】：${companyData.company_name}\n【公司簡介】：${companyData.company_info}`;
+                        companyContext =
+                            `【公司名稱】：${companyData.company_name}\n【公司簡介】：${companyData.company_info}`;
                     }
 
-                    // 4. 啟動多人專用 Gemini 連線
                     startGroupGeminiConnections(
-                        roomState,
+                        room,
                         candidatesInfoText,
                         candidatesList,
-                        position,
-                        interview_type,
+                        room.position,
+                        room.interview_type,
                         jobDetailsText,
                         companyContext
                     );
+
+                    // ⭐ 告訴整個房間：AI 面試正式啟動
+                    wss.clients.forEach(c => {
+                        if (c.readyState === WebSocket.OPEN && c.sessionId === room.sessionId) {
+                            c.send(JSON.stringify({
+                                type: 'ai_interview_started',
+                                candidates: candidatesList.map(x => x.name)
+                            }));
+                        }
+                    });
+
+                    return;
                 }
 
             } catch (err) {

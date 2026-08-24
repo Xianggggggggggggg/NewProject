@@ -23,10 +23,13 @@
         <div class="video-section">
             <div class="status-bar" id="status-text">🔄 正在連線至面試房間...</div>
 
-            <!-- 💡 移除 onclick="startGroupInterview()"，改由 JS 控制單次綁定 -->
             <button id="start-test-btn"
                 style="margin-left: 15px; padding: 5px 12px; background: #00b894; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
-                🚀 測試：啟動 AI 面試官
+                開始按鈕（按了即開啟鏡頭、麥克風）
+            </button>
+            <button id="test-start-ai-btn" onclick="testStartAIInterview()" disabled
+                style="margin-left: 8px; padding: 5px 12px; background: #8e44ad; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                🧪 測試：開始 AI 面試
             </button>
 
             <div class="ai-stage">

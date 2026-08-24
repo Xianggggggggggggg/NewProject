@@ -161,8 +161,7 @@ function setupFaceMesh() {
 // ==========================================
 // 3. UI 與音訊播放控制
 // ==========================================
-function appendTranscript(role, text, ai_role = 'HR') {
-    if (typeof text !== 'string' || !text.trim()) return;
+function appendTranscript(role, text, ai_role = 'HR', candidateName = '應徵者') {    if (typeof text !== 'string' || !text.trim()) return;
 
     const box = document.getElementById('transcriptBox');
     if (!box) return;
@@ -193,7 +192,7 @@ function appendTranscript(role, text, ai_role = 'HR') {
         msgDiv.style.backgroundColor = "#e8f0fe";
         msgDiv.style.color = "#1a73e8";
         msgDiv.style.textAlign = "right";
-        msgDiv.innerText = '👤 你：\n' + text;
+        msgDiv.innerText = `👤 ${candidateName}：\n${text}`;
     }
     box.appendChild(msgDiv);
     box.scrollTop = box.scrollHeight;
@@ -346,25 +345,26 @@ async function startGroupInterview() {
 
         myPeer.on('open', id => {
             const statusText = document.getElementById('status-text');
-            if (statusText) statusText.innerText = `✅ 連線成功 (您的 ID: ${id})`;
+            if (statusText) statusText.innerText = `✅ 已準備完成，等待面試官開始 AI 面試`;
 
-            const joinMsg = JSON.stringify({ type: 'join_group_room', sessionId: TARGET_SESSION_ID, peerId: id });
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(joinMsg);
-            } else {
-                ws.onopen = () => ws.send(joinMsg);
-            }
-
-            // 初始化 AI 面試資料
-            if (TARGET_SESSION_ID) {
+            const sendReady = () => {
                 ws.send(JSON.stringify({
-                    customType: 'init_group_interview', // 改成與後端一致
+                    type: 'join_group_room',
                     sessionId: TARGET_SESSION_ID,
-                    candidateIds: RESUME_ID ? [RESUME_ID] : [], // 配合後端解構的 candidateIds
+                    peerId: id
+                }));
+
+                ws.send(JSON.stringify({
+                    type: 'candidate_ready',
+                    sessionId: TARGET_SESSION_ID,
+                    resumeId: RESUME_ID,
                     position: POSITION,
                     interview_type: INTERVIEW_TYPE
                 }));
-            }
+            };
+
+            if (ws.readyState === WebSocket.OPEN) sendReady();
+            else ws.addEventListener('open', sendReady, { once: true });
         });
 
         // 🌟 【接聽來電】：其他人連線過來時 (包含真人考官與其他應徵者)
@@ -393,6 +393,33 @@ async function startGroupInterview() {
         // 🌟 監聽後端 WebSocket 廣播
         ws.onmessage = async (event) => {
             const data = JSON.parse(event.data);
+            if (data.type === 'ai_interview_started') {
+                const testBtn = document.getElementById('test-start-ai-btn');
+
+                if (testBtn) {
+                    testBtn.disabled = true;
+                    testBtn.innerText = "✅ AI 面試進行中";
+                    testBtn.style.background = "#27ae60";
+                }
+
+                console.log("✅ AI 團體面試正式開始");
+            }
+
+            if (data.type === 'candidate_ready_confirmed') {
+                const statusText = document.getElementById('status-text');
+
+                if (statusText) {
+                    statusText.innerText = `✅ ${data.candidateName} 已準備，等待面試官開始`;
+                }
+
+                const testBtn = document.getElementById('test-start-ai-btn');
+                if (testBtn) testBtn.disabled = false;
+            }
+
+            if (data.type === 'candidate_late_join') {
+                const statusText = document.getElementById('status-text');
+                if (statusText) statusText.innerText = `⚠️ AI 面試已開始，您目前為後加入成員`;
+            }
 
             // 🟢 A. 戰情室廣播：真人考官（HR）進房了！
             if (data.type === 'hr_joined_group') {
@@ -459,7 +486,7 @@ async function startGroupInterview() {
             }
 
             if (data.customType === 'user_transcript') {
-                appendTranscript('user', data.text);
+                appendTranscript('user', data.text, null, data.candidateName);
             }
 
             if (data.customType === 'ai_transcript_final') {
@@ -544,6 +571,27 @@ async function startGroupInterview() {
     }
 }
 
+function testStartAIInterview() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        alert("尚未連線到面試房間！");
+        return;
+    }
+
+    if (!confirm("測試模式：確定要開始 AI 團體面試嗎？")) return;
+
+    ws.send(JSON.stringify({
+        type: 'start_ai_interview',
+        sessionId: TARGET_SESSION_ID
+    }));
+
+    const btn = document.getElementById('test-start-ai-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerText = "⏳ AI 啟動中...";
+    }
+
+    console.log("🧪 [測試模式] 應徵者端要求開始 AI 面試");
+}
 // ==========================================
 // 5. 背景連線與 DOM 控制函數
 // ==========================================

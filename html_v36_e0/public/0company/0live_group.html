@@ -37,6 +37,11 @@
                   <span id="current-room-title" style="font-weight: bold; color: var(--primary-green);">潛入房間：載入中...</span>
                   <div style="display: flex; gap: 10px;">
                       <button id="startCallBtn" class="btn-green" style="padding: 6px 15px; border-radius: 20px; border: none; cursor: pointer; font-size: 14px;" onclick="startHumanInterview()">🚀 開啟鏡頭</button>
+                    <button id="startAIInterviewBtn" class="btn-green"
+                        style="padding: 6px 15px; border-radius: 20px; border: none; cursor: pointer; font-size: 14px; background:#8e44ad;"
+                        onclick="startAIInterview()">
+                        🤖 開始 AI 面試
+                    </button>
                       <button id="toggleCamBtn" style="background:#2c3e50; color:white; padding: 6px 15px; border-radius: 20px; border: none; cursor: pointer; font-size: 14px;" onclick="toggleCamera()">📹 關閉鏡頭</button>
                       <button id="toggleMicBtn" style="background:#c0392b; color:white; padding: 6px 15px; border-radius: 20px; border: none; cursor: pointer; font-size: 14px;" onclick="toggleMic()">🔇 關閉麥克風</button>
                       <button id="toggleAIBtn" onclick="toggleAIPause()" style="background: #34495e; color: white; padding: 6px 15px; border-radius: 20px; border: none; cursor: pointer; font-size: 14px; font-weight: bold;">⏸️ 暫停 AI</button>

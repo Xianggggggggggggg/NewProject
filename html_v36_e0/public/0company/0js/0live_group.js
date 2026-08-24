@@ -136,7 +136,26 @@ function setupWebSocket() {
 
     ws.onmessage = async (event) => {
         const data = JSON.parse(event.data);
-        if (data.customType === 'user_transcript') appendTranscript('user', data.text);
+        if (data.type === 'room_ready_state') {
+            const names = data.candidates || [];
+            const el = document.getElementById('readyCandidatesText');
+            if (el) el.innerText = `👥 已準備 ${names.length} 人：${names.join('、')}`;
+        }
+
+        if (data.type === 'ai_interview_started') {
+            const btn = document.getElementById('startAIInterviewBtn');
+
+            if (btn) {
+                btn.disabled = true;
+                btn.innerText = "✅ AI 面試進行中";
+                btn.style.background = "#27ae60";
+            }
+
+            console.log("✅ AI 團體面試正式開始");
+        }
+        if (data.customType === 'user_transcript') {
+            appendTranscript('user', data.text, null, data.candidateName);
+        }
         if (data.customType === 'ai_transcript_final') appendTranscript('ai', data.text, data.ai_role || 'MANAGER');
 
         if (data.type === 'user_joined_group') {
@@ -189,6 +208,29 @@ async function startHumanInterview() {
         document.getElementById('startCallBtn').innerText = "🚀 重新連線";
     }
 }
+function startAIInterview() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        alert("尚未連線到面試房間！");
+        return;
+    }
+
+    if (!confirm("確定要開始 AI 團體面試嗎？開始後將以目前已準備的應徵者名單進行面試。")) {
+        return;
+    }
+
+    ws.send(JSON.stringify({
+        type: 'start_ai_interview',
+        sessionId: targetSessionId
+    }));
+
+    const btn = document.getElementById('startAIInterviewBtn');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerText = "⏳ AI 面試啟動中...";
+    }
+
+    console.log("🤖 已要求後端正式開始 AI 團體面試");
+}
 // ==========================================
 // 6. HR 設備控制 (開關麥克風/鏡頭)
 // ==========================================
@@ -232,8 +274,7 @@ function toggleMic() {
     }
 }
 
-function appendTranscript(role, text, ai_role = 'HR') {
-    if (!text.trim()) return;
+function appendTranscript(role, text, ai_role = 'HR', candidateName = '應徵者') {    if (!text.trim()) return;
     const box = document.getElementById('transcriptBox');
     if (!box) return;
 
@@ -263,7 +304,7 @@ function appendTranscript(role, text, ai_role = 'HR') {
         msgDiv.style.backgroundColor = "#e8f0fe";
         msgDiv.style.color = "#1a73e8";
         msgDiv.style.textAlign = "right";
-        msgDiv.innerText = '👤 應徵者：\n' + text;
+        msgDiv.innerText = `👤 ${candidateName}：\n${text}`;
     }
     box.appendChild(msgDiv);
     box.scrollTop = box.scrollHeight;

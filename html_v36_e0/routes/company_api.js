@@ -36,7 +36,7 @@ router.get('/jobs', async (req, res) => {
 
 router.delete('/jobs/:id', async (req, res) => {
     try {
-        const { error } = await supabaseAdmin.from('jobs').delete().eq('job_id', req.params.id); 
+        const { error } = await supabaseAdmin.from('jobs').delete().eq('job_id', req.params.id);
         if (error) throw error;
         res.json({ success: true, message: "職缺已成功刪除！" });
     } catch (err) {
@@ -73,11 +73,11 @@ router.get('/active-sessions', async (req, res) => {
     try {
         const { data, error } = await supabaseAdmin
             .from('interview_sessions')
-            .select('*, applicants(name)') 
-            .eq('status', '進行中'); 
+            .select('*, applicants(name)')
+            .eq('status', '進行中');
 
         if (error) throw error;
-        
+
         res.json({ success: true, data: data });
     } catch (err) {
         console.error('撈取進行中名單失敗:', err);
@@ -132,26 +132,26 @@ router.get('/applicants', async (req, res) => {
 
         // 整理資料，抽出分數與合適度送給前端
         const formattedData = data
-            .filter(session => session.jobs && session.jobs.job_title) 
+            .filter(session => session.jobs && session.jobs.job_title)
             .map(session => {
                 let profScore = 'N/A';
                 let suitability = 'N/A';
-                
+
                 let report = session.evaluation_reports;
                 if (Array.isArray(report)) report = report[0];
 
                 if (report) {
                     profScore = report.professional_score ?? 'N/A';
-                    
+
                     let jsonObj = report.full_report_json;
                     if (typeof jsonObj === 'string') {
-                        try { jsonObj = JSON.parse(jsonObj); } catch(e){}
+                        try { jsonObj = JSON.parse(jsonObj); } catch (e) { }
                     }
-                    
+
                     if (jsonObj && jsonObj.overall_score !== undefined) {
                         suitability = jsonObj.overall_score;
                     } else {
-                        suitability = profScore; 
+                        suitability = profScore;
                     }
                 }
 
@@ -162,7 +162,7 @@ router.get('/applicants', async (req, res) => {
                     department: session.jobs.department || '未分類',
                     name: session.applicants?.name || '未知應徵者',
                     start_time: session.start_time,
-                    status: session.status || 'status-2', 
+                    status: session.status || 'status-2',
                     profScore: profScore,
                     suitability: suitability,
                     hasReport: !!report
@@ -275,7 +275,7 @@ router.post('/jobs/:jobId/comparison-report', async (req, res) => {
         (sessions || []).forEach(s => {
             let report = s.evaluation_reports;
             if (Array.isArray(report)) report = report[0];
-            if (!report) return; 
+            if (!report) return;
 
             let jsonObj = report.full_report_json;
             if (typeof jsonObj === 'string') {
@@ -285,7 +285,7 @@ router.post('/jobs/:jobId/comparison-report', async (req, res) => {
 
             const existing = latestByApplicant[s.applicant_id];
             if (!existing || new Date(s.start_time) > new Date(existing.start_time)) {
-                
+
                 // 💡 關鍵瘦身：限制總結字數，並移除優缺點陣列，避免 Token 爆掉
                 let shortSummary = jsonObj.summary || '';
                 if (shortSummary.length > 100) shortSummary = shortSummary.substring(0, 100) + '...';
@@ -356,13 +356,13 @@ async function callOpenAIForJson(prompt) {
             model: "gpt-4o-mini", // 速度快且成本極低的強大模型
             response_format: { type: "json_object" }, // 強制回傳 JSON 格式
             messages: [
-                { 
-                    role: "system", 
-                    content: "你是一位資深招募顧問。請嚴格依照使用者的要求進行分析，並且務必只輸出合法的 JSON 格式，絕對不要包含任何 Markdown 標記 (如 ```json)。" 
+                {
+                    role: "system",
+                    content: "你是一位資深招募顧問。請嚴格依照使用者的要求進行分析，並且務必只輸出合法的 JSON 格式，絕對不要包含任何 Markdown 標記 (如 ```json)。"
                 },
-                { 
-                    role: "user", 
-                    content: prompt 
+                {
+                    role: "user",
+                    content: prompt
                 }
             ]
         });
@@ -430,11 +430,11 @@ router.get('/group-rooms', async (req, res) => {
         const { data, error } = await supabaseAdmin
             .from('group_rooms')
             // 🌟 修改：加入 interview_sessions(count) 來動態計算人數
-            .select('*, jobs(job_title), interview_sessions(count)') 
-            .order('start_time', { ascending: true }); 
+            .select('*, jobs(job_title), interview_sessions(count)')
+            .order('start_time', { ascending: true });
 
         if (error) throw error;
-        
+
         // 🌟 新增：將 Supabase 回傳的 count 格式，整理成前端原本預期的 current_count
         const formattedData = data.map(room => ({
             ...room,
@@ -465,12 +465,12 @@ router.post('/group-rooms', async (req, res) => {
 
         const { data, error } = await supabaseAdmin
             .from('group_rooms')
-            .insert([{ 
-                start_time, 
-                max_capacity: max_capacity || 6, 
+            .insert([{
+                start_time,
+                max_capacity: max_capacity || 6,
                 // 🌟 修改：已經刪除 current_count: 0，交給動態關聯計算
                 status: '等待中',
-                job_id: jobId 
+                job_id: jobId
             }])
             .select();
 
@@ -501,7 +501,7 @@ router.get('/manage-sessions', async (req, res) => {
             .order('start_time', { ascending: true });
 
         if (error) throw error;
-        
+
         // 🌟 新增：利用撈出來的應徵者名單陣列長度，動態補上 current_count 給前端
         const formattedData = data.map(room => ({
             ...room,
@@ -520,12 +520,12 @@ router.put('/group-rooms/:id', async (req, res) => {
     try {
         const roomId = req.params.id;
         const { start_time, max_capacity } = req.body;
-        
+
         const { error } = await supabaseAdmin
             .from('group_rooms')
             .update({ start_time, max_capacity })
             .eq('room_id', roomId);
-            
+
         if (error) throw error;
         res.json({ success: true, message: '場次更新成功' });
     } catch (err) {
@@ -538,7 +538,7 @@ router.put('/group-rooms/:id', async (req, res) => {
 router.delete('/group-rooms/:id', async (req, res) => {
     try {
         const roomId = req.params.id;
-        
+
         // 🌟 防呆安全機制：先將原本綁定在這個房間的應徵者解綁，並退回狀態
         await supabaseAdmin
             .from('interview_sessions')
@@ -550,7 +550,7 @@ router.delete('/group-rooms/:id', async (req, res) => {
             .from('group_rooms')
             .delete()
             .eq('room_id', roomId);
-            
+
         if (error) throw error;
         res.json({ success: true, message: '場次已刪除' });
     } catch (err) {
@@ -591,7 +591,7 @@ router.post('/group-rooms/:roomId/report', async (req, res) => {
             .select('text_content')
             .in('session_id', sessionIds)
             .order('created_at', { ascending: false })
-            .limit(1); 
+            .limit(1);
 
         if (transErr) throw transErr;
         if (!transcripts || transcripts.length === 0) {

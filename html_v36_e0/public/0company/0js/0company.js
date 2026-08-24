@@ -317,7 +317,7 @@ window.deleteJob = async function (jobId) {
 };
 
 window.openApplicantListModal = function (jobId) {
-  window.closeAllModals(); 
+  window.closeAllModals();
   const overlay = document.getElementById('applicant-list-overlay');
   if (overlay) overlay.style.display = 'flex';
 };
@@ -368,7 +368,7 @@ window.saveCompanyProfile = async function () {
 window.applicantDataMap = {};
 
 window.openApplicantDetailModal = async function (sessionId) {
-  window.closeAllModals(); 
+  window.closeAllModals();
   const overlay = document.getElementById('applicant-detail-overlay');
   if (!overlay) return;
   overlay.style.display = 'flex';
@@ -463,7 +463,7 @@ window.fetchApplicants = async function () {
 };
 
 // 🚀 核心升級：全新雙重分組與折疊邏輯 (修復分數重複問題)
-let globalGroupedData = {}; 
+let globalGroupedData = {};
 
 window.renderGroupedApplicants = function (data) {
   const container = document.getElementById('grouped-applicant-list');
@@ -495,7 +495,7 @@ window.renderGroupedApplicants = function (data) {
 
     const groupDiv = document.createElement('div');
     groupDiv.className = 'job-group-container';
-    
+
     // 這裡加上了跟其他按鈕一樣的 btn-action UI
     groupDiv.innerHTML = `
       <div class="job-group-header">
@@ -522,7 +522,7 @@ window.renderGroupedApplicants = function (data) {
     for (const [personName, sessions] of Object.entries(persons)) {
       const personDiv = document.createElement('div');
       personDiv.className = 'person-group';
-      
+
       const hintText = sessions.length > 1 ? '▼ 點擊展開各次紀錄' : '▼ 點擊展開紀錄';
       personDiv.innerHTML = `
         <div class="person-header" onclick="this.nextElementSibling.classList.toggle('open')">
@@ -534,7 +534,7 @@ window.renderGroupedApplicants = function (data) {
         </div>
         <div class="person-sessions"></div>
       `;
-      
+
       const sessionsContainer = personDiv.querySelector('.person-sessions');
 
       sessions.forEach((app, index) => {
@@ -542,21 +542,21 @@ window.renderGroupedApplicants = function (data) {
 
         const clone = template.content.cloneNode(true);
         const avatar = clone.querySelector('.applicant-avatar');
-        if(avatar) avatar.textContent = personName.charAt(0);
-        
+        if (avatar) avatar.textContent = personName.charAt(0);
+
         const nthText = sessions.length > 1 ? ` (第 ${sessions.length - index} 次面試)` : '';
         clone.querySelector('.applicant-name').textContent = personName + nthText;
 
         const jobDiv = clone.querySelector('.applicant-job');
-        if(jobDiv) jobDiv.style.display = 'none';
+        if (jobDiv) jobDiv.style.display = 'none';
 
         const selectStatus = clone.querySelector('.status-select');
-        if(selectStatus) {
+        if (selectStatus) {
           selectStatus.dataset.id = app.session_id;
           let currentStatus = app.status;
           const validValues = Array.from(selectStatus.options).map(opt => opt.value);
           if (!validValues.includes(currentStatus)) currentStatus = '';
-          
+
           let defaultOption = selectStatus.querySelector('option[value=""]');
           if (!defaultOption) {
             defaultOption = document.createElement('option');
@@ -564,7 +564,7 @@ window.renderGroupedApplicants = function (data) {
             defaultOption.textContent = '尚未點選狀態';
             selectStatus.insertBefore(defaultOption, selectStatus.firstChild);
           }
-          
+
           selectStatus.value = currentStatus;
           selectStatus.className = 'status-select';
           if (currentStatus === '') selectStatus.classList.add('status-empty');
@@ -574,17 +574,17 @@ window.renderGroupedApplicants = function (data) {
         // 💡 修改重點：不再 createElement！直接抓 HTML 裡面的 span 來填入資料！
         const profVal = clone.querySelector('.prof-val');
         const suitVal = clone.querySelector('.suit-val');
-        
+
         const safeProfScore = (app.profScore !== undefined && app.profScore !== 'N/A' && app.profScore !== null) ? app.profScore : '尚未評估';
         const isEvaluated = (app.suitability !== undefined && app.suitability !== 'N/A' && app.suitability !== null);
         const suitScore = isEvaluated ? Number(app.suitability) : 0;
-        
+
         if (profVal) {
           profVal.innerText = safeProfScore !== '尚未評估' ? `${safeProfScore} 分` : '尚未評估';
           profVal.style.color = safeProfScore !== '尚未評估' ? '#333' : '#999';
           profVal.style.fontWeight = safeProfScore !== '尚未評估' ? 'bold' : 'normal';
         }
-        
+
         if (suitVal) {
           if (!isEvaluated || isNaN(suitScore)) {
             suitVal.innerText = '尚未評估';
@@ -612,7 +612,7 @@ window.renderGroupedApplicants = function (data) {
             btnReport.title = '查看詳細報告';
             btnReport.style.opacity = '1';
             btnReport.style.cursor = 'pointer';
-            btnReport.removeAttribute('onclick'); 
+            btnReport.removeAttribute('onclick');
           }
         }
 
@@ -666,7 +666,7 @@ window.updateApplicantStatus = async function (sessionId, newStatus) {
 // ================= 4.5 職缺綜合對比大報告 (新增) =================
 
 window.openJobComparisonReport = async function (jobId, jobTitle) {
-  window.closeAllModals();  
+  window.closeAllModals();
   const overlay = document.getElementById('job-comparison-overlay');
   const content = document.getElementById('job-comparison-content');
   const titleEl = document.getElementById('job-comparison-title');
@@ -904,7 +904,7 @@ window.addEventListener('DOMContentLoaded', () => {
           const appData = window.applicantDataMap[sessionId];
           // 2. 抽出職缺名稱 (如果找不到就給預設值)
           const jobTitle = appData ? appData.job_title : '未指定職缺';
-          
+
           // 3. 把 session_id 跟 job 兩個參數一起透過網址帶過去！
           window.location.href = `0setup.html?session_id=${sessionId}&job=${encodeURIComponent(jobTitle)}`;
         } else {
@@ -932,7 +932,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   if (document.getElementById('sessions-container')) {
-  
+
     window.generateGroupReport = window.openCompanyGroupReportModal;
   }
 
@@ -1050,58 +1050,58 @@ window.addEventListener('DOMContentLoaded', () => {
 // ==========================================
 
 // 1. 關閉 Modal
-window.closeGroupReportModal = function() {
-    const overlay = document.getElementById('group-report-overlay');
-    if (overlay) overlay.style.display = 'none';
+window.closeGroupReportModal = function () {
+  const overlay = document.getElementById('group-report-overlay');
+  if (overlay) overlay.style.display = 'none';
 };
 
 // 2. 呼叫 API 並渲染報告 (火力全開擴充版)
-window.generateGroupReport = async function(roomId) {
-    const overlay = document.getElementById('group-report-overlay');
-    const content = document.getElementById('group-report-content');
-    
-    if (!overlay || !content) return alert('找不到報告視窗元件！');
+window.generateGroupReport = async function (roomId) {
+  const overlay = document.getElementById('group-report-overlay');
+  const content = document.getElementById('group-report-content');
 
-    // 顯示 Loading
-    overlay.style.display = 'flex';
-    content.innerHTML = '<div style="padding: 50px 20px; text-align: center; color: #666; font-size: 16px;">⏳ 正在請 AI 顧問分析同場團面表現，請稍候...<br>(約需 10~15 秒)</div>';
+  if (!overlay || !content) return alert('找不到報告視窗元件！');
 
-    try {
-        // 呼叫我們剛剛寫好的 API
-        const res = await fetch(`/api/company/group-rooms/${roomId}/report`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        const result = await res.json();
+  // 顯示 Loading
+  overlay.style.display = 'flex';
+  content.innerHTML = '<div style="padding: 50px 20px; text-align: center; color: #666; font-size: 16px;">⏳ 正在請 AI 顧問分析同場團面表現，請稍候...<br>(約需 10~15 秒)</div>';
 
-        if (!result.success) {
-            content.innerHTML = `<div style="color:#e74c3c; padding:20px; background:#fdf2f2; border-radius:8px; margin:10px;">產生失敗：${result.error}</div>`;
-            return;
-        }
+  try {
+    // 呼叫我們剛剛寫好的 API
+    const res = await fetch(`/api/company/group-rooms/${roomId}/report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const result = await res.json();
 
-        const report = result.report;
-        
-        // --- 渲染排名 HTML ---
-        let rankingHtml = '';
-        if (report.ranking && report.ranking.length > 0) {
-            rankingHtml = report.ranking.map((r, i) => `
+    if (!result.success) {
+      content.innerHTML = `<div style="color:#e74c3c; padding:20px; background:#fdf2f2; border-radius:8px; margin:10px;">產生失敗：${result.error}</div>`;
+      return;
+    }
+
+    const report = result.report;
+
+    // --- 渲染排名 HTML ---
+    let rankingHtml = '';
+    if (report.ranking && report.ranking.length > 0) {
+      rankingHtml = report.ranking.map((r, i) => `
                 <div style="margin-bottom: 15px; padding: 15px; background: #f9fbf9; border-left: 5px solid #1D9E75; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <strong style="color: #2C3E50; font-size: 16px;">第 ${i+1} 名：${r.name}</strong>
+                        <strong style="color: #2C3E50; font-size: 16px;">第 ${i + 1} 名：${r.name}</strong>
                         <span style="background: #1D9E75; color: white; padding: 3px 10px; border-radius: 12px; font-size: 13px; font-weight: bold;">評分: ${r.overall_score || 'N/A'}</span>
                     </div>
                     <p style="margin: 0 0 5px 0; color: #1565c0; font-size: 14px; font-weight: 500;">💡 優勢：${r.core_strength || '無'}</p>
                     <p style="margin: 0; color: #555; font-size: 14px; line-height: 1.5;">${r.reason || '無'}</p>
                 </div>
             `).join('');
-        } else {
-            rankingHtml = '<p style="color:#888;">尚無排名資料</p>';
-        }
+    } else {
+      rankingHtml = '<p style="color:#888;">尚無排名資料</p>';
+    }
 
-        // --- 渲染個人詳細分析 HTML ---
-        let individualHtml = '';
-        if (report.individual_details && report.individual_details.length > 0) {
-            individualHtml = report.individual_details.map(p => `
+    // --- 渲染個人詳細分析 HTML ---
+    let individualHtml = '';
+    if (report.individual_details && report.individual_details.length > 0) {
+      individualHtml = report.individual_details.map(p => `
                 <div style="margin-bottom: 15px; padding: 12px 15px; background: #fff; border: 1px solid #e0e0e0; border-radius: 8px;">
                     <strong style="color: #34495e; font-size: 15px;">👤 ${p.name} <span style="font-size: 13px; color: #7f8c8d; font-weight: normal;">(發言積極度: ${p.participation_level || 'N/A'})</span></strong>
                     <div style="display: flex; gap: 15px; margin-top: 10px;">
@@ -1120,12 +1120,12 @@ window.generateGroupReport = async function(roomId) {
                     </div>
                 </div>
             `).join('');
-        } else {
-            individualHtml = '<p style="color:#888;">尚無個人分析資料</p>';
-        }
+    } else {
+      individualHtml = '<p style="color:#888;">尚無個人分析資料</p>';
+    }
 
-        // --- 渲染完整報告畫面 ---
-        content.innerHTML = `
+    // --- 渲染完整報告畫面 ---
+    content.innerHTML = `
             <div style="padding: 10px 20px 20px 20px; line-height: 1.6; max-height: 70vh; overflow-y: auto; background-color: #fcfcfc;">
                 
                 <div style="text-align: center; margin-bottom: 20px;">
@@ -1170,26 +1170,26 @@ window.generateGroupReport = async function(roomId) {
             </div>
         `;
 
-    } catch (err) {
-        console.error(err);
-        content.innerHTML = `<div style="color:#e74c3c; padding:20px; text-align:center;">連線失敗或發生不可預期的錯誤，請稍後再試。</div>`;
-    }
+  } catch (err) {
+    console.error(err);
+    content.innerHTML = `<div style="color:#e74c3c; padding:20px; text-align:center;">連線失敗或發生不可預期的錯誤，請稍後再試。</div>`;
+  }
 };
 // ==========================================
 // 📊 職缺綜合對比大報告功能
 // ==========================================
-window.closeJobComparisonModal = function() {
+window.closeJobComparisonModal = function () {
   const overlay = document.getElementById('job-comparison-overlay');
-  if(overlay) overlay.style.display = 'none';
+  if (overlay) overlay.style.display = 'none';
 };
 
-window.generateComparisonReport = async function(jobTitle) {
+window.generateComparisonReport = async function (jobTitle) {
   const overlay = document.getElementById('job-comparison-overlay');
   const content = document.getElementById('job-comparison-content');
-  
-  if(!overlay || !content) {
-      alert('找不到彈出視窗元件，請確認 HTML 結構是否正確。');
-      return;
+
+  if (!overlay || !content) {
+    alert('找不到彈出視窗元件，請確認 HTML 結構是否正確。');
+    return;
   }
 
   // 1. 打開 Modal，並顯示載入中
@@ -1197,50 +1197,50 @@ window.generateComparisonReport = async function(jobTitle) {
   content.innerHTML = '<div style="padding: 40px 20px; text-align: center; font-size: 16px; color: #666;">⏳ 正在請 AI 顧問分析全體應徵者資料，請稍候... <br>(視人數多寡，約需 10-20 秒)</div>';
 
   try {
-      // 2. 從前端資料庫抓出這個職缺的 ID (給後端 API 使用)
-      const persons = globalGroupedData[jobTitle];
-      let jobId = null;
-      for (let pName in persons) {
-          if (persons[pName] && persons[pName][0] && persons[pName][0].job_id) {
-              jobId = persons[pName][0].job_id;
-              break;
-          }
+    // 2. 從前端資料庫抓出這個職缺的 ID (給後端 API 使用)
+    const persons = globalGroupedData[jobTitle];
+    let jobId = null;
+    for (let pName in persons) {
+      if (persons[pName] && persons[pName][0] && persons[pName][0].job_id) {
+        jobId = persons[pName][0].job_id;
+        break;
       }
+    }
 
-      if (!jobId) {
-          content.innerHTML = '<div style="color:red; padding:20px;">找不到該職缺的 ID，無法生成報告。</div>';
-          return;
-      }
+    if (!jobId) {
+      content.innerHTML = '<div style="color:red; padding:20px;">找不到該職缺的 ID，無法生成報告。</div>';
+      return;
+    }
 
-      // 3. 呼叫後端 API
-      const res = await fetch(`/api/company/jobs/${jobId}/comparison-report`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
-      });
-      const result = await res.json();
+    // 3. 呼叫後端 API
+    const res = await fetch(`/api/company/jobs/${jobId}/comparison-report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const result = await res.json();
 
-      if (!result.success) {
-          content.innerHTML = `<div style="color:#e74c3c; padding:20px; background:#fdf2f2; border-radius:8px; margin:10px;">產生失敗：${result.error}</div>`;
-          return;
-      }
+    if (!result.success) {
+      content.innerHTML = `<div style="color:#e74c3c; padding:20px; background:#fdf2f2; border-radius:8px; margin:10px;">產生失敗：${result.error}</div>`;
+      return;
+    }
 
-      const report = result.report;
-      
-      // 4. 渲染排名 HTML
-      let rankingHtml = '';
-      if (report.ranking && report.ranking.length > 0) {
-          rankingHtml = report.ranking.map((r, i) => `
+    const report = result.report;
+
+    // 4. 渲染排名 HTML
+    let rankingHtml = '';
+    if (report.ranking && report.ranking.length > 0) {
+      rankingHtml = report.ranking.map((r, i) => `
               <div style="margin-bottom: 12px; padding: 12px 15px; background: #f9fbf9; border-left: 4px solid #1D9E75; border-radius: 6px;">
-                  <strong style="color: #2C3E50; font-size: 15px;">第 ${i+1} 名：${r.name} (合適度: <span style="color:#1D9E75;">${r.overall_score}%</span>)</strong>
+                  <strong style="color: #2C3E50; font-size: 15px;">第 ${i + 1} 名：${r.name} (合適度: <span style="color:#1D9E75;">${r.overall_score}%</span>)</strong>
                   <p style="margin: 5px 0 0 0; color: #555; font-size: 14px; line-height: 1.5;">${r.reason}</p>
               </div>
           `).join('');
-      } else {
-          rankingHtml = '<p style="color:#888;">尚無排名資料</p>';
-      }
+    } else {
+      rankingHtml = '<p style="color:#888;">尚無排名資料</p>';
+    }
 
-      // 5. 渲染精美的報告畫面
-      content.innerHTML = `
+    // 5. 渲染精美的報告畫面
+    content.innerHTML = `
           <div style="padding: 10px 20px 20px 20px; line-height: 1.6; max-height: 65vh; overflow-y: auto;">
               <div style="margin-bottom: 20px; text-align: center;">
                   <span style="background:#e8f5e9; color:#1D9E75; padding:6px 15px; border-radius:20px; font-size:14px; font-weight:bold;">分析對象共計：${result.applicant_count} 人</span>
@@ -1273,7 +1273,7 @@ window.generateComparisonReport = async function(jobTitle) {
       `;
 
   } catch (err) {
-      console.error(err);
-      content.innerHTML = `<div style="color:#e74c3c; padding:20px; text-align:center;">連線失敗或發生不可預期的錯誤，請稍後再試。</div>`;
+    console.error(err);
+    content.innerHTML = `<div style="color:#e74c3c; padding:20px; text-align:center;">連線失敗或發生不可預期的錯誤，請稍後再試。</div>`;
   }
 };
