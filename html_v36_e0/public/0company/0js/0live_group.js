@@ -100,6 +100,10 @@ async function fetchActiveSessions() {
         listContainer.innerHTML = ''; 
         data.forEach(session => {
             let applicantName = session.applicants?.name || `求職者 (${session.applicant_id?.substring(0, 5)}...)` || '未知應徵者';
+            
+            // 🌟 關鍵修復：HR 也要判斷這是不是多人房間，是的話就拿 room_id 當鑰匙！
+            const correctRoomKey = session.room_id ? session.room_id : session.session_id;
+
             const card = document.createElement('div');
             card.className = 'room-card';
             card.style.marginBottom = '15px';
@@ -109,9 +113,10 @@ async function fetchActiveSessions() {
                     <span style="display: inline-block; padding: 2px 8px; background: #e8f5e9; color: #2e7d32; border-radius: 12px; font-size: 12px; margin-left: 10px;">
                         ${session.status}
                     </span>
-                    <div style="font-size: 12px; color: #666; margin-top: 8px; font-family: monospace;">房號: ${session.session_id}</div>
+                    <div style="font-size: 12px; color: #666; margin-top: 8px; font-family: monospace;">房號: ${correctRoomKey}</div>
                 </div>
-                <button class="btn-green" onclick="window.location.href='0live_group.html?session_id=${session.session_id}'" style="padding: 8px 15px; font-size: 14px;">
+                <!-- 🌟 換上正確的鑰匙 -->
+                <button class="btn-green" onclick="window.location.href='0live_group.html?session_id=${correctRoomKey}'" style="padding: 8px 15px; font-size: 14px;">
                     潛入團面戰情室 ➔
                 </button>
             `;
