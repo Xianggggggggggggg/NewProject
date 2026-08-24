@@ -415,6 +415,67 @@ function setupGroupWebSocket(options) {
                                 }
                             }
 
+                            // ==========================================
+                            // 🔄 HR 交棒主管
+                            // ⭐ 恢復舊版穩定交接方式
+                            // ==========================================
+                            if (
+                                role === 'HR' &&
+                                roomState.isHRWrappingUp &&
+                                roomState.currentInterviewer === 'HR'
+                            ) {
+                                if (
+                                    finalSentence.includes('部門主管') ||
+                                    finalSentence.includes('交給')
+                                ) {
+                                    console.log("🔄 偵測到 HR 交接台詞 → 準備啟動部門主管");
+
+                                    roomState.currentInterviewer = 'HANDOVER';
+                                    roomState.isHRWrappingUp = false;
+
+                                    setTimeout(() => {
+                                        roomState.currentInterviewer = 'MANAGER';
+
+                                        const firstCandidate =
+                                            roomState.candidatesList[0];
+
+                                        // ⭐ 主管第一題從第一位開始
+                                        roomState.currentCandidateResumeId =
+                                            firstCandidate.resumeId;
+
+                                        roomState.currentCandidateName =
+                                            firstCandidate.name;
+
+                                        if (
+                                            roomState.managerWs?.readyState ===
+                                            WebSocket.OPEN
+                                        ) {
+                                            console.log("👨‍💻 正式啟動部門主管");
+
+                                            roomState.managerWs.send(JSON.stringify({
+                                                realtimeInput: {
+                                                    text: `[系統指令]
+HR 已交棒給你，請開始技術提問。
+
+請先提出完整的技術問題。
+最後一句必須逐字說：
+「現在請${firstCandidate.name}回答。」
+
+不要只說點名句，必須先完整提出問題。`
+                                                }
+                                            }));
+
+                                        } else {
+                                            console.error(
+                                                "❌ 部門主管 Gemini WebSocket 尚未 OPEN",
+                                                roomState.managerWs?.readyState
+                                            );
+                                        }
+
+                                    }, 3000);
+                                }
+                            }
+
 
                             // 🔄 主管交還 HR (使用 roomState)
                             if (role === 'MANAGER' && roomState.isManagerWrappingUp && roomState.currentInterviewer === 'MANAGER') {
@@ -621,70 +682,9 @@ function setupGroupWebSocket(options) {
                 }
                 // ⭐ AI 這輪真的講完了
                 if (response.serverContent?.turnComplete) {
-
                     roomState.isAiSpeaking = false;
-
-                    // ==========================================
-                    // 🔄 HR 交接語講完 → 強制切到部門主管
-                    // ==========================================
-                    if (
-                        role === 'HR' &&
-                        roomState.isHRWrappingUp &&
-                        roomState.currentInterviewer === 'HR' &&
-                        !roomState.isFinalStage
-                    ) {
-                        console.log("🔄 HR 交接完成 → 準備啟動部門主管");
-
-                        roomState.currentInterviewer = 'HANDOVER';
-                        roomState.isHRWrappingUp = false;
-
-                        const firstCandidate = roomState.candidatesList[0];
-
-                        setTimeout(() => {
-
-                            roomState.currentInterviewer = 'MANAGER';
-
-                            roomState.currentCandidateResumeId =
-                                firstCandidate.resumeId;
-
-                            roomState.currentCandidateName =
-                                firstCandidate.name;
-
-                            if (
-                                roomState.managerWs &&
-                                roomState.managerWs.readyState === WebSocket.OPEN
-                            ) {
-                                console.log("👨‍💻 正式啟動部門主管");
-
-                                roomState.managerWs.send(JSON.stringify({
-                                    realtimeInput: {
-                                        text: `[系統指令]
-                                                HR 階段已經正式結束，現在由你接手技術面試。
-
-                                                請立刻語音提出第一個完整的技術問題。
-                                                問題必須與「${position}」職缺、應徵者履歷或實際技術能力相關。
-
-                                                問題說完整之後，最後一句必須逐字說：
-                                                「現在請${firstCandidate.name}回答。」
-
-                                                禁止只說「現在請${firstCandidate.name}回答」而沒有問題內容。
-                                                不要使用其他點名句型。`
-                                    }
-                                }));
-
-                            } else {
-                                console.error(
-                                    "❌ 部門主管 Gemini WebSocket 尚未 OPEN",
-                                    roomState.managerWs?.readyState
-                                );
-                            }
-
-                        }, 800);
-
-                        return;
-                    }
                 }
-                
+                                
                 if (
                     response.serverContent?.turnComplete &&
                     role === 'HR' &&
