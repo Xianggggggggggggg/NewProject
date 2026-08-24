@@ -337,8 +337,8 @@ async function startGroupInterview() {
         myPeer = new Peer({
             config: {
                 'iceServers': [
-                    { url: 'stun:stun.l.google.com:19302' },
-                    { url: 'stun:stun1.l.google.com:19302' }
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' }
                 ]
             }
         });
@@ -620,10 +620,25 @@ function connectToNewUser(peerId, stream) {
 function addVideoStream(video, stream, elementId = '') {
     video.srcObject = stream;
     if (elementId) video.id = elementId;
-    video.addEventListener('loadedmetadata', () => video.play());
+    
+    // 🌟 關鍵修復 1：加上手機與嚴格瀏覽器必備的屬性！
+    video.setAttribute('playsinline', ''); 
+    video.setAttribute('autoplay', '');    
+    
+    video.addEventListener('loadedmetadata', () => {
+        video.play().catch(err => {
+            console.warn("⚠️ 瀏覽器阻擋了自動播放，請確認網頁互動狀態:", err);
+        });
+    });
 
     const grid = document.getElementById('video-grid');
-    if (grid) grid.append(video);
+    if (grid) {
+        // 🌟 關鍵修復 2：防呆機制，避免重複貼上同一個畫面
+        if (!document.getElementById(video.id)) {
+            grid.append(video);
+            console.log(`📺 成功將視訊畫面加入網格 (ID: ${video.id})`);
+        }
+    }
 }
 
 // ==========================================
