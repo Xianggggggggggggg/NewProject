@@ -128,7 +128,11 @@ function setupGroupWebSocket(options) {
                 3. **禁止亂跳與搶答**：絕對不允許開放自由搶答，也絕對不能跳號。
                 4. 每次發言【只能問一個問題】且【只能指定一個人】。
                 5. 你的對話對象只有現場的應徵者們，絕對不要與部門主管對話。
-                6. 每次指定回答者時，必須完整念出該應徵者的姓名。禁止只說「下一位」、「第二位」、「換下一位」。
+                6. 【發言權切換固定句型，絕對不可違反】
+                每次要指定某位應徵者開始回答時，你的最後一句必須「逐字」使用以下格式：
+                「現在請完整姓名回答。」
+                例如：「現在請王小明回答。」
+                前面的回饋內容可以提到任何人的姓名，但只有「現在請完整姓名回答。」這個固定句型代表真正切換回答者。
 
                 【交接規則】：
                 - 在尚未收到系統交接指令前，請持續按照上述規則進行。收到指令後，做簡短回饋並做過場交接。
@@ -158,8 +162,12 @@ function setupGroupWebSocket(options) {
                    - 必須等第 1 位講完 $\rightarrow$ 換第 2 位講同一題 $\rightarrow$ 以此類推，直到所有人輪完這題，才能出下一題。
                 3. 禁止搶答與亂跳號。每次發言【一次只能問一個問題】且【只能指定一個人回答】。
                 4. 絕對不要與 HR 對話。
-                5. 每次指定回答者時，必須完整念出該應徵者的姓名。禁止只說「下一位」、「第二位」、「換下一位」。
-
+                5. 【發言權切換固定句型，絕對不可違反】
+                每次要指定某位應徵者開始回答時，你的最後一句必須「逐字」使用以下格式：
+                「現在請完整姓名回答。」
+                例如：「現在請王小明回答。」
+                前面的回饋內容可以提到任何人的姓名，但只有「現在請完整姓名回答。」這個固定句型代表真正切換回答者。
+                
                 【交接規則】：
                 - 未收到交接指令前持續依序點名提問。收到指令後不提問，做簡短總結並交還 HR。
                 - 絕對不要輸出任何「動作描述」。
@@ -246,8 +254,13 @@ function setupGroupWebSocket(options) {
 
                     roomState.hrWs.send(JSON.stringify({
                         realtimeInput: {
-                            text: `[系統指令] 請語音開場歡迎大家(${candidatesNamesStr})，並點名「${firstName}」自我介紹。`
-                        }
+                            text: `[系統指令]
+                            請語音開場歡迎大家（${candidatesNamesStr}），並請第一位應徵者做自我介紹。
+
+                            你的最後一句必須逐字說：
+                            「現在請${firstName}回答。」
+
+                            不要使用其他點名句型。`                        }
                     }));
                 }
 
@@ -285,17 +298,15 @@ function setupGroupWebSocket(options) {
                         }
                     }
 
-                    // ⭐ 不可以用 find() 找第一個名字
-                    // 要找 AI 這句話「最後提到的應徵者」
                     let mentionedCandidate = null;
-                    let lastMentionIndex = -1;
 
+                    // ⭐ 只認唯一固定句型：「現在請XXX回答」
                     for (const candidate of roomState.candidatesList || []) {
-                        const index = candidateDetectText.lastIndexOf(candidate.name);
+                        const command = `現在請${candidate.name}回答`;
 
-                        if (index > lastMentionIndex) {
-                            lastMentionIndex = index;
+                        if (candidateDetectText.includes(command)) {
                             mentionedCandidate = candidate;
+                            break;
                         }
                     }
 
@@ -303,11 +314,14 @@ function setupGroupWebSocket(options) {
                         mentionedCandidate &&
                         roomState.currentCandidateResumeId !== mentionedCandidate.resumeId
                     ) {
-                        roomState.currentCandidateResumeId = mentionedCandidate.resumeId;
-                        roomState.currentCandidateName = mentionedCandidate.name;
+                        roomState.currentCandidateResumeId =
+                            mentionedCandidate.resumeId;
+
+                        roomState.currentCandidateName =
+                            mentionedCandidate.name;
 
                         console.log(
-                            `🎯 發言權切換 → ${mentionedCandidate.name} (${mentionedCandidate.resumeId})`
+                            `🎯 AI 正式點名 → ${mentionedCandidate.name} (${mentionedCandidate.resumeId})`
                         );
                     }
 
@@ -385,8 +399,19 @@ function setupGroupWebSocket(options) {
                                     setTimeout(() => {
                                         roomState.currentInterviewer = 'MANAGER';
                                         if (roomState.managerWs?.readyState === WebSocket.OPEN) {
-                                            roomState.managerWs.send(JSON.stringify({ realtimeInput: { text: `[系統指令] HR 已交棒給你，請開始技術提問。` } }));
-                                        }
+                                            const firstCandidate = roomState.candidatesList[0];
+
+                                            roomState.currentCandidateResumeId = firstCandidate.resumeId;
+                                            roomState.currentCandidateName = firstCandidate.name;
+
+                                            roomState.managerWs.send(JSON.stringify({
+                                                realtimeInput: {
+                                                    text: `[系統指令]
+                                                            HR 已交棒給你，請開始第一個技術問題。
+                                                            提問完成後，最後一句必須逐字說：「現在請${firstCandidate.name}回答。」
+                                                            不要使用其他點名句型。`
+                                                }
+                                            }));                                        }
                                     }, 3000);
                                 }
                             }
@@ -441,42 +466,65 @@ function setupGroupWebSocket(options) {
                         response.serverContent.inputTranscription.text || "";
 
                     if (partialText) {
-                        // 累積 Gemini 傳回來的語音辨識片段
+
+                        // ⭐ 這一段逐字稿第一次出現時，就把真正聲音來源鎖住
+                        // 後面即使 AI 已經點名下一個人，也不能改掉
+                        if (!roomState.userSpeechCandidateResumeId) {
+                            roomState.userSpeechCandidateResumeId =
+                                roomState.lastAudioCandidateResumeId;
+
+                            roomState.userSpeechCandidateName =
+                                roomState.lastAudioCandidateName ||
+                                roomState.currentCandidateName ||
+                                '應徵者';
+
+                            console.log(
+                                `🎙️ 逐字稿來源鎖定 → ${roomState.userSpeechCandidateName}`
+                            );
+                        }
+
                         roomState.userSpeechBuffer += partialText;
 
-                        // 每收到新片段就重新計時
                         if (roomState.userFlushTimeout) {
                             clearTimeout(roomState.userFlushTimeout);
                         }
 
                         roomState.userFlushTimeout = setTimeout(() => {
+
                             const finalUserText = convert(
                                 roomState.userSpeechBuffer.trim()
                             )
                                 .replace(/([\u3400-\u9FFF])\s+(?=[\u3400-\u9FFF])/g, '$1')
                                 .replace(/\s+([，。！？、,.!?])/g, '$1');
 
-                            // 清空 buffer
+                            // ⭐ 在清空前，先把這段真正的講話者存起來
+                            const speechCandidateName =
+                                roomState.userSpeechCandidateName ||
+                                roomState.lastAudioCandidateName ||
+                                '應徵者';
+
                             roomState.userSpeechBuffer = "";
+
+                            // ⭐ 這段話結束，解除鎖定
+                            roomState.userSpeechCandidateResumeId = null;
+                            roomState.userSpeechCandidateName = null;
 
                             if (!finalUserText) return;
 
                             console.log(
-                                `👤 [應徵者語音辨識] ${finalUserText}`
+                                `👤 [${speechCandidateName}] ${finalUserText}`
                             );
 
-                            // 存入面試紀錄
                             addLog(
                                 roomState.sessionId,
-                                `candidate:${roomState.currentCandidateName || '應徵者'}`,
+                                `candidate:${speechCandidateName}`,
                                 finalUserText,
                                 "speech"
                             );
 
-                            // ⭐ 廣播給這個房間的所有前端
                             const userMsg = JSON.stringify({
                                 customType: 'user_transcript',
-                                candidateName: roomState.currentCandidateName || '應徵者',
+                                candidateName: speechCandidateName,
                                 text: finalUserText
                             });
 
@@ -715,6 +763,16 @@ function setupGroupWebSocket(options) {
                             if (room.currentInterviewer === 'HR') targetWs = room.hrWs;
                             else if (room.currentInterviewer === 'MANAGER') targetWs = room.managerWs;
 
+                            // ⭐ 這一包聲音真正是從哪一位應徵者的 WebSocket 送來
+                            if (
+                                clientWs.clientType === 'candidate' &&
+                                parsedMsg.realtimeInput.audio
+                            ) {
+                                room.lastAudioCandidateResumeId = clientWs.resumeId;
+                                room.lastAudioCandidateName =
+                                    clientWs.candidateName || room.currentCandidateName;
+                            }
+
                             if (targetWs && targetWs.readyState === WebSocket.OPEN) {
                                 targetWs.send(JSON.stringify({
                                     realtimeInput: parsedMsg.realtimeInput
@@ -823,7 +881,13 @@ function setupGroupWebSocket(options) {
 
                     const resumeMsg = JSON.stringify({
                         clientContent: {
-                            turns: [{ role: "user", parts: [{ text: `[系統指令] 真人面試官插話結束，請繼續團體面試流程，點名下一位應徵者提問。` }] }],
+                            turns: [{
+                                role: "user", parts: [{
+                                    text: `[系統指令]
+                                            真人面試官插話結束，請繼續原本的團體面試流程。
+                                            如果你要指定某位應徵者回答，最後一句必須嚴格使用：「現在請完整姓名回答。」
+                                            (例如：「現在請王小明回答。」)
+                                            不得使用任何其他點名方式。` }] }],
                             turnComplete: true
                         }
                     });
@@ -911,8 +975,15 @@ function setupGroupWebSocket(options) {
                             currentCandidateResumeId: null,
                             currentCandidateName: null,
 
-                            hrRoundCount: 0,
-                            managerRoundCount: 0,
+                            // ⭐ 真正送進 Gemini 的聲音來源
+                            lastAudioCandidateResumeId: null,
+                            lastAudioCandidateName: null,
+
+                            // ⭐ 目前這一段逐字稿屬於誰
+                            userSpeechCandidateResumeId: null,
+                            userSpeechCandidateName: null,
+
+                            hrRoundCount: 0,                            managerRoundCount: 0,
                             hrTargetRounds: 2,
                             managerTargetRounds: 3,
 
