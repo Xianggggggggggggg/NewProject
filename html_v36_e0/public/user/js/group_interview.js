@@ -546,6 +546,7 @@ async function startGroupInterview() {
                 });
                     ws.send(JSON.stringify({
                         sessionId: window.currentSessionId,
+                        speakerActive: isMainSpeaker,
                         realtimeInput: {
                             audio: {
                                 mimeType: "audio/pcm;rate=16000",

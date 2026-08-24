@@ -763,16 +763,27 @@ function setupGroupWebSocket(options) {
                             if (room.currentInterviewer === 'HR') targetWs = room.hrWs;
                             else if (room.currentInterviewer === 'MANAGER') targetWs = room.managerWs;
 
-                            // ⭐ 這一包聲音真正是從哪一位應徵者的 WebSocket 送來
+                            // ⭐ 只有「真的正在講話」的音訊，才記錄這個人的身分
                             if (
                                 clientWs.clientType === 'candidate' &&
-                                parsedMsg.realtimeInput.audio
+                                parsedMsg.realtimeInput.audio &&
+                                parsedMsg.speakerActive === true
                             ) {
                                 room.lastAudioCandidateResumeId = clientWs.resumeId;
                                 room.lastAudioCandidateName =
                                     clientWs.candidateName || room.currentCandidateName;
-                            }
 
+                                // ⭐ 這一段回答一開始就把說話者鎖死
+                                if (!room.userSpeechCandidateResumeId) {
+                                    room.userSpeechCandidateResumeId = clientWs.resumeId;
+                                    room.userSpeechCandidateName =
+                                        clientWs.candidateName || room.currentCandidateName;
+
+                                    console.log(
+                                        `🎙️ 真正開始收音 → ${room.userSpeechCandidateName}`
+                                    );
+                                }
+                            }
                             if (targetWs && targetWs.readyState === WebSocket.OPEN) {
                                 targetWs.send(JSON.stringify({
                                     realtimeInput: parsedMsg.realtimeInput
