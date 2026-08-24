@@ -93,6 +93,7 @@ function setupGroupWebSocket(options) {
             // 2. 將所有狀態集中管理於 roomState，確保多人共享同一份狀態
             roomState.currentInterviewer = 'HR';
             roomState.isInterviewEnded = false;
+            roomState.isAiSpeaking = false;
             roomState.hrRoundCount = 0;
             roomState.managerRoundCount = 0;
             roomState.isHRWrappingUp = false;
@@ -137,6 +138,7 @@ function setupGroupWebSocket(options) {
                 【交接規則】：
                 - 在尚未收到系統交接指令前，請持續按照上述規則進行。收到指令後，做簡短回饋並做過場交接。
                 - 絕對不要輸出任何「動作描述」（如 (點頭)）。
+                - 只有部門主管完成技術面試並正式交還 HR 後，你才可以進行整場最終結語。
 
                 【所有應徵者履歷資訊】：
                 ${candidatesInfoText}
@@ -264,11 +266,25 @@ function setupGroupWebSocket(options) {
                     }));
                 }
 
-                // 廣播 AI 聲音內容
-                if (response.serverContent?.modelTurn?.parts && roomState.currentInterviewer === role) {
-                    const audioMsg = JSON.stringify({ ...JSON.parse(data.toString()), ai_role: role });
+                if (
+                    response.serverContent?.modelTurn?.parts &&
+                    roomState.currentInterviewer === role
+                ) {
+                    // ⭐ AI 正在講話，暫時不讓應徵者 PCM 回灌 Gemini
+                    roomState.isAiSpeaking = true;
+
+                    const audioMsg = JSON.stringify({
+                        ...JSON.parse(data.toString()),
+                        ai_role: role
+                    });
+
                     wss.clients.forEach(c => {
-                        if (c.readyState === WebSocket.OPEN && c.sessionId === roomState.sessionId) c.send(audioMsg);
+                        if (
+                            c.readyState === WebSocket.OPEN &&
+                            c.sessionId === roomState.sessionId
+                        ) {
+                            c.send(audioMsg);
+                        }
                     });
                 }
 
@@ -619,17 +635,33 @@ function setupGroupWebSocket(options) {
                         }
                     }
                 }
+                // ⭐ AI 這輪真的講完了
+                if (response.serverContent?.turnComplete) {
+                    roomState.isAiSpeaking = false;
+                }
+                
                 if (
                     response.serverContent?.turnComplete &&
                     role === 'HR' &&
                     roomState.isFinalStage &&
                     !roomState.aiPhaseFinished
                 ) {
+                    // ⭐ AI 面試階段正式結束
                     roomState.aiPhaseFinished = true;
+                    roomState.isAiSpeaking = false;
                     roomState.currentInterviewer = 'WAITING_HUMAN';
 
-                    console.log("🏁 AI 面試結束，AI 不再回答，等待真人 HR");
+                    // ⭐ 清除 AI 發言權
+                    // 後面任何應徵者講話都不再送進 Gemini
+                    roomState.currentCandidateResumeId = null;
+                    roomState.currentCandidateName = null;
 
+                    console.log(
+                        "🏁 AI 面試正式結束，Gemini 停止回應，保留真人對話與文字紀錄"
+                    );
+
+                    // ⭐ 告訴所有前端：AI 階段結束
+                    // 前端之後可以繼續用 SpeechRecognition 記錄候選人的話
                     wss.clients.forEach(c => {
                         if (
                             c.readyState === WebSocket.OPEN &&
@@ -640,6 +672,26 @@ function setupGroupWebSocket(options) {
                             }));
                         }
                     });
+
+                    // ⭐ 只關 Gemini HR / Manager
+                    // 不關候選人的 WebSocket、PeerJS、麥克風
+                    setTimeout(() => {
+                        if (
+                            roomState.hrWs &&
+                            roomState.hrWs.readyState === WebSocket.OPEN
+                        ) {
+                            roomState.hrWs.close();
+                        }
+
+                        if (
+                            roomState.managerWs &&
+                            roomState.managerWs.readyState === WebSocket.OPEN
+                        ) {
+                            roomState.managerWs.close();
+                        }
+
+                        console.log("🔇 Gemini HR / Manager 已關閉，不再產生 AI 回覆");
+                    }, 1500);
                 }
             };
 
@@ -732,30 +784,20 @@ function setupGroupWebSocket(options) {
                         // AI 還沒結束時，才把聲音送給 Gemini
                         if (!room.aiPhaseFinished && room.currentInterviewer !== 'WAITING_HUMAN') {
 
-                            /*// ⭐ 正常版 暫時更改
+                            // ⭐ AI 自己正在講話時，不把麥克風聲音回送給 Gemini
+                            // WebRTC 不受影響，其他真人仍然聽得到
                             if (
-                                clientWs.clientType === 'candidate' &&
-                                room.currentCandidateResumeId &&
-                                clientWs.resumeId !== room.currentCandidateResumeId
+                                room.isAiSpeaking &&
+                                parsedMsg.realtimeInput.audio
                             ) {
                                 return;
-                            }*/
+                            }
+                            // ⭐ 正常版 暫時更改
                             if (
                                 clientWs.clientType === 'candidate' &&
                                 room.currentCandidateResumeId &&
                                 clientWs.resumeId !== room.currentCandidateResumeId
                             ) {
-                                // ⭐ 測試用：每 1 秒最多印一次，避免 Terminal 洗版
-                                const now = Date.now();
-
-                                if (!clientWs.lastBlockedLog || now - clientWs.lastBlockedLog > 1000) {
-                                    console.log(
-                                        `🔇 AI 暫不接收「${clientWs.candidateName}」的聲音，目前輪到「${room.currentCandidateName}」`
-                                    );
-
-                                    clientWs.lastBlockedLog = now;
-                                }
-
                                 return;
                             }
 
@@ -978,6 +1020,7 @@ function setupGroupWebSocket(options) {
                             isInterviewEnded: false,
                             aiStarted: false,
                             aiPhaseFinished: false,
+                            isAiSpeaking: false,
 
                             position,
                             interview_type,
