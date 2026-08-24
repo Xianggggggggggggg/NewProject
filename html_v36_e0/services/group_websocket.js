@@ -139,6 +139,14 @@ function setupGroupWebSocket(options) {
                 - 在尚未收到系統交接指令前，請持續按照上述規則進行。收到指令後，做簡短回饋並做過場交接。
                 - 絕對不要輸出任何「動作描述」（如 (點頭)）。
                 - 只有部門主管完成技術面試並正式交還 HR 後，你才可以進行整場最終結語。
+                
+                【禁止問題】：
+                「對我們公司或這個職缺，有沒有其他想了解的問題？」
+                「有沒有問題想問我們？」
+                「還有什麼想了解的？」
+                或任何讓應徵者反過來向公司提問的問題。
+                - HR 階段只負責自我介紹、求職動機、人格特質、職涯規劃、團隊合作、情境與行為問題。
+                - HR 問題數完成後，必須直接交給部門主管，不可自行增加最後提問。
 
                 【所有應徵者履歷資訊】：
                 ${candidatesInfoText}
@@ -407,30 +415,6 @@ function setupGroupWebSocket(options) {
                                 }
                             }
 
-                            // 🔄 HR 交棒主管 (使用 roomState)
-                            if (role === 'HR' && roomState.isHRWrappingUp && roomState.currentInterviewer === 'HR') {
-                                if (finalSentence.includes('部門主管') || finalSentence.includes('交給')) {
-                                    roomState.currentInterviewer = 'HANDOVER';
-                                    roomState.isHRWrappingUp = false;
-                                    setTimeout(() => {
-                                        roomState.currentInterviewer = 'MANAGER';
-                                        if (roomState.managerWs?.readyState === WebSocket.OPEN) {
-                                            const firstCandidate = roomState.candidatesList[0];
-
-                                            roomState.currentCandidateResumeId = firstCandidate.resumeId;
-                                            roomState.currentCandidateName = firstCandidate.name;
-
-                                            roomState.managerWs.send(JSON.stringify({
-                                                realtimeInput: {
-                                                    text: `[系統指令]
-                                                            HR 已交棒給你，請開始第一個技術問題。
-                                                            提問完成後，最後一句必須逐字說：「現在請${firstCandidate.name}回答。」
-                                                            不要使用其他點名句型。`
-                                                }
-                                            }));                                        }
-                                    }, 3000);
-                                }
-                            }
 
                             // 🔄 主管交還 HR (使用 roomState)
                             if (role === 'MANAGER' && roomState.isManagerWrappingUp && roomState.currentInterviewer === 'MANAGER') {
@@ -637,7 +621,68 @@ function setupGroupWebSocket(options) {
                 }
                 // ⭐ AI 這輪真的講完了
                 if (response.serverContent?.turnComplete) {
+
                     roomState.isAiSpeaking = false;
+
+                    // ==========================================
+                    // 🔄 HR 交接語講完 → 強制切到部門主管
+                    // ==========================================
+                    if (
+                        role === 'HR' &&
+                        roomState.isHRWrappingUp &&
+                        roomState.currentInterviewer === 'HR' &&
+                        !roomState.isFinalStage
+                    ) {
+                        console.log("🔄 HR 交接完成 → 準備啟動部門主管");
+
+                        roomState.currentInterviewer = 'HANDOVER';
+                        roomState.isHRWrappingUp = false;
+
+                        const firstCandidate = roomState.candidatesList[0];
+
+                        setTimeout(() => {
+
+                            roomState.currentInterviewer = 'MANAGER';
+
+                            roomState.currentCandidateResumeId =
+                                firstCandidate.resumeId;
+
+                            roomState.currentCandidateName =
+                                firstCandidate.name;
+
+                            if (
+                                roomState.managerWs &&
+                                roomState.managerWs.readyState === WebSocket.OPEN
+                            ) {
+                                console.log("👨‍💻 正式啟動部門主管");
+
+                                roomState.managerWs.send(JSON.stringify({
+                                    realtimeInput: {
+                                        text: `[系統指令]
+                                                HR 階段已經正式結束，現在由你接手技術面試。
+
+                                                請立刻語音提出第一個完整的技術問題。
+                                                問題必須與「${position}」職缺、應徵者履歷或實際技術能力相關。
+
+                                                問題說完整之後，最後一句必須逐字說：
+                                                「現在請${firstCandidate.name}回答。」
+
+                                                禁止只說「現在請${firstCandidate.name}回答」而沒有問題內容。
+                                                不要使用其他點名句型。`
+                                    }
+                                }));
+
+                            } else {
+                                console.error(
+                                    "❌ 部門主管 Gemini WebSocket 尚未 OPEN",
+                                    roomState.managerWs?.readyState
+                                );
+                            }
+
+                        }, 800);
+
+                        return;
+                    }
                 }
                 
                 if (
