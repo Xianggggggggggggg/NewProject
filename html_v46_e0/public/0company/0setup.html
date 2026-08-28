@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>設定面試場次 - CareerLab</title>
+  <!-- 引入共用資源 -->
+  <link rel="stylesheet" href="../user/css/style.css">
+  <link rel="stylesheet" href="0css/0company.css">
+  <link rel="stylesheet" href="0css/0setup.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+</head>
+<body>
+  <div id="topbar-container"></div>
+  <div id="sidebar-container"></div>
+
+  <!-- 🌟 讓整個區塊置中 -->
+  <div class="section-container active" style="align-items: center; padding-top: 50px;">
+    <div style="max-width: 800px; width: 100%; display: flex; flex-direction: column; align-items: center;">
+        
+        <!-- 🌟 新增：顯示應徵職位 (防呆確認用，唯讀狀態) -->
+        <div style="width: 100%; max-width: 580px; margin-bottom: 40px;">
+            <label style="text-align: left; display: block; margin-bottom: 8px; font-weight: bold; color: var(--text-sub);">應徵職位</label>
+            <!-- 加上 readonly 與 pointer-events: none 讓它無法被修改與點擊 -->
+            <input type="text" id="display-job-title" class="reg-input" style="margin-bottom: 0; background: #f5f7f8; color: #555; pointer-events: none; border-color: #ddd;" readonly value="載入中...">
+        </div>
+
+        <!-- ① 選擇單人或雙人(多人) -->
+        <h2 style="color: var(--primary-green); margin-bottom: 25px; font-size: 28px; text-align: center;">① 選擇面試模式</h2>
+        <div style="display: flex; gap: 30px; margin-bottom: 50px; justify-content: center; width: 100%;">
+            <div class="mode-box glass-panel selected" id="mode-single" onclick="selectInterviewMode('single')">
+                <span class="mode-icon">👤</span>單人
+            </div>
+            <div class="mode-box glass-panel" id="mode-group" onclick="selectInterviewMode('group')">
+                <span class="mode-icon">👥</span>多人
+            </div>
+        </div>
+
+        <!-- ② 選擇場次 -->
+        <h2 style="color: var(--primary-green); margin-bottom: 25px; font-size: 28px; text-align: center;">② 設定面試時間與場次</h2>
+        
+        <!-- 單人模式的時間選擇器 -->
+        <div id="single-time-picker" class="glass-panel" style="display: block; margin-bottom: 30px; padding: 40px; width: 100%; max-width: 500px;">
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="text-align: left;">選擇日期</label>
+                    <input type="date" id="single-date" class="reg-input" style="margin-bottom: 0;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="text-align: left;">選擇時間</label>
+                    <input type="time" id="single-time" class="reg-input" style="margin-bottom: 0;">
+                </div>
+            </div>
+        </div>
+
+        <!-- 🌟 多人模式的場次選擇器 (修正點：設定 max-width 限制為雙排，且內部靠左排 flex-start) -->
+        <div id="group-session-picker" style="display: none; justify-content: flex-start; align-items: center; gap: 20px; flex-wrap: wrap; margin-bottom: 30px; width: 100%; max-width: 580px;">
+            
+            <!-- 使用 display: contents 讓 JS 產生的子元素直接受外層的 flex-start 排版控制 -->
+            <div id="mock-sessions-container" style="display: contents;"></div>
+            
+            <!-- 十字按鈕也會順著流排在最後面 -->
+            <div class="add-resume glass-panel" style="width: 60px; height: 60px; border-radius: 50%; font-size: 35px; display: flex; align-items: center; justify-content: center; min-height: auto; flex-shrink: 0;" onclick="createNewGroupRoom()" title="新增多人場次">⊕</div>
+        </div>
+
+        <!-- 底部導覽按鈕 -->
+        <div style="display: flex; gap: 20px; margin-top: 20px; justify-content: center; width: 100%;">
+            <button class="btn-glass" style="padding: 16px; font-size: 16px; border-radius: 12px; width: 150px;" onclick="window.location.href='0live.html'">面試場次</button>
+            <button class="btn-green" style="padding: 16px; font-size: 16px; border-radius: 12px; width: 250px;" onclick="confirmSetupAndNotify()">確認並回應徵者管理</button>
+        </div>
+
+    </div>
+  </div>
+  <!-- 🌟 新增：建立多人面試場次專用彈窗 -->
+  <div id="add-group-room-overlay" class="modal-overlay">
+    <div class="register-modal resume-form-modal custom-modal-size" style="max-width: 400px;">
+      <button class="modal-close-btn" onclick="document.getElementById('add-group-room-overlay').style.display='none'">✖</button>
+      <h2 class="modal-main-title" style="color: var(--primary-green); margin-bottom: 10px;">➕ 新增多人場次</h2>
+      <p style="color: #666; margin-bottom: 20px;">請設定團體面試的日期、時間與最大容納人數。</p>
+      
+      <!-- 🌟 新增：將職缺名稱顯示在彈窗內 (唯讀) -->
+      <div class="form-group" style="margin-bottom: 15px;">
+        <label style="text-align: left; display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-main);">應徵職位</label>
+        <input type="text" id="new-room-job-title" class="reg-input" style="margin-bottom: 0; background: #f5f7f8; color: #555; pointer-events: none; border-color: #ddd;" readonly>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 15px;">
+        <label style="text-align: left; display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-main);">面試日期</label>
+        <input type="date" id="new-room-date" class="reg-input" style="margin-bottom: 0;">
+      </div>
+      <div class="form-group" style="margin-bottom: 15px;">
+        <label style="text-align: left; display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-main);">面試時間</label>
+        <input type="time" id="new-room-time" class="reg-input" style="margin-bottom: 0;">
+      </div>
+      <div class="form-group" style="margin-bottom: 25px;">
+        <label style="text-align: left; display: block; margin-bottom: 5px; font-weight: bold; color: var(--text-main);">最大容納人數</label>
+        <input type="number" id="new-room-capacity" class="reg-input" value="6" min="2" max="20" style="margin-bottom: 0;">
+      </div>
+      
+      <button class="btn-green" style="width: 100%; padding: 15px; font-size: 16px; border-radius: 10px;" onclick="submitNewGroupRoom()">確認新增場次</button>
+    </div>
+  </div>
+
+  <script src="0js/0company.js"></script>
+  <script src="0js/0setup.js"></script>
+</body>
+</html>
