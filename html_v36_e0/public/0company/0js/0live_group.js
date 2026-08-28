@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('room-selection-view').style.display = 'none';
         document.getElementById('video-room-view').style.display = 'block';
         document.getElementById('current-room-title').innerText = `目前潛入團面房間 ID：${targetSessionId}`;
-        
+
         // 🌟 初始化 PeerJS
         initPeerJS();
         setupWebSocket();
@@ -38,12 +38,12 @@ document.addEventListener('DOMContentLoaded', () => {
 function initPeerJS() {
     // 把原本空空的 new Peer() 換成這樣：
     myPeer = new Peer({
-    config: {
-        'iceServers': [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-        ]
-    }
+        config: {
+            'iceServers': [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        }
     });
 
     myPeer.on('open', id => {
@@ -54,10 +54,10 @@ function initPeerJS() {
     // 接聽來自求職者的連線
     myPeer.on('call', call => {
         if (localStream) call.answer(localStream);
-        
+
         call.on('stream', remoteStream => {
             console.log("🎥 收到求職者畫面！Peer ID:", call.peer);
-            
+
             // 🌟 關鍵：動態產生 video 標籤，才能容納多個應徵者
             let video = document.getElementById(`applicant_${call.peer}`);
             if (!video) {
@@ -97,10 +97,10 @@ async function fetchActiveSessions() {
             return;
         }
 
-        listContainer.innerHTML = ''; 
+        listContainer.innerHTML = '';
         data.forEach(session => {
             let applicantName = session.applicants?.name || `求職者 (${session.applicant_id?.substring(0, 5)}...)` || '未知應徵者';
-            
+
             // 🌟 關鍵修復：HR 也要判斷這是不是多人房間，是的話就拿 room_id 當鑰匙！
             const correctRoomKey = session.room_id ? session.room_id : session.session_id;
 
@@ -164,17 +164,17 @@ function setupWebSocket() {
         if (data.customType === 'ai_transcript_final') appendTranscript('ai', data.text, data.ai_role || 'MANAGER');
 
         if (data.type === 'user_joined_group') {
-        console.log("👥 偵測到新應徵者加入！HR 重新發送座標...");
-        
-        // 如果 HR 已經開好鏡頭了，就重新發送一次身分給遲到的人
-        if (myPeerId && localStream) {
-            ws.send(JSON.stringify({ 
-                type: 'hr_joined_group', 
-                sessionId: targetSessionId,
-                peerId: myPeerId 
-            }));
+            console.log("👥 偵測到新應徵者加入！HR 重新發送座標...");
+
+            // 如果 HR 已經開好鏡頭了，就重新發送一次身分給遲到的人
+            if (myPeerId && localStream) {
+                ws.send(JSON.stringify({
+                    type: 'hr_joined_group',
+                    sessionId: targetSessionId,
+                    peerId: myPeerId
+                }));
+            }
         }
-    }
     };
 }
 
@@ -197,11 +197,11 @@ async function startHumanInterview() {
         document.getElementById('localHrVideo').srcObject = localStream;
 
         // 🌟 超級關鍵：透過 WebSocket 廣播你的 Peer ID 給所有求職者！
-        ws.send(JSON.stringify({ 
-            type: 'hr_joined_group', 
+        ws.send(JSON.stringify({
+            type: 'hr_joined_group',
             sessionId: targetSessionId,
             peerId: myPeerId // 把 Peer ID 霸氣送出去！
-        })); 
+        }));
 
         document.getElementById('startCallBtn').innerText = "✅ 已成功潛入";
         document.getElementById('startCallBtn').style.background = "#27ae60";
@@ -243,7 +243,7 @@ function toggleCamera() {
     if (!localStream) return;
     const videoTrack = localStream.getVideoTracks()[0];
     const btn = document.getElementById('toggleCamBtn');
-    
+
     if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled;
         btn.innerText = videoTrack.enabled ? "📹 關閉鏡頭" : "📹 開啟鏡頭";
@@ -255,31 +255,32 @@ function toggleMic() {
     if (!localStream) return;
     const audioTrack = localStream.getAudioTracks()[0];
     const btn = document.getElementById('toggleMicBtn');
-    
+
     if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
-        
+
         if (audioTrack.enabled) {
             btn.innerText = "🔇 關閉麥克風";
-            btn.style.background = "#27ae60"; 
+            btn.style.background = "#27ae60";
             // 🌟 麥克風打開時，啟動語音轉文字
             if (hrRecognition) {
-                try { hrRecognition.start(); } catch(e) {}
+                try { hrRecognition.start(); } catch (e) { }
                 console.log("🎤 麥克風與語音辨識已開啟");
             }
         } else {
             btn.innerText = "🎙️ 開啟麥克風";
-            btn.style.background = "#c0392b"; 
+            btn.style.background = "#c0392b";
             // 🌟 麥克風關閉時，停止語音轉文字
             if (hrRecognition) {
-                try { hrRecognition.stop(); } catch(e) {}
+                try { hrRecognition.stop(); } catch (e) { }
                 console.log("🔇 麥克風與語音辨識已暫停");
             }
         }
     }
 }
 
-function appendTranscript(role, text, ai_role = 'HR', candidateName = '應徵者') {    if (!text.trim()) return;
+function appendTranscript(role, text, ai_role = 'HR', candidateName = '應徵者') {
+    if (!text.trim()) return;
     const box = document.getElementById('transcriptBox');
     if (!box) return;
 
@@ -337,13 +338,13 @@ if ('webkitSpeechRecognition' in window) {
             }
         }
     };
-    
+
     // 確保麥克風沒關時，聽寫員不小心睡著要叫醒他
     hrRecognition.onend = () => {
         const btn = document.getElementById('toggleMicBtn');
         // 依照你原本的 UI，如果是開啟狀態，按鈕應該是顯示 "🔇 關閉麥克風"
         if (btn && btn.innerText.includes('關閉麥克風') && hrRecognition) {
-            try { hrRecognition.start(); } catch(e){}
+            try { hrRecognition.start(); } catch (e) { }
         }
     };
 }
@@ -365,7 +366,7 @@ function toggleAIPause() {
     if (isAIPausedByHR) {
         // 1. 發送暫停訊號給後端
         ws.send(JSON.stringify({ type: 'pause_ai', sessionId: targetSessionId }));
-        
+
         // 2. 改變按鈕外觀，提醒 HR 現在是自己控場
         if (btn) {
             btn.innerText = "▶️ 恢復 AI 提問";
@@ -376,7 +377,7 @@ function toggleAIPause() {
     } else {
         // 1. 發送恢復訊號給後端
         ws.send(JSON.stringify({ type: 'resume_ai', sessionId: targetSessionId }));
-        
+
         // 2. 把按鈕變回原本的樣子
         if (btn) {
             btn.innerText = "⏸️ 暫停 AI";

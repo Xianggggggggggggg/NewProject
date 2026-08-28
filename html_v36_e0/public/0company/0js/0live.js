@@ -556,5 +556,43 @@ function toggleMic() {
         }
     }
 }
+// ==========================================
+// 🌟 戰情室專屬：AI 暫停 / 恢復遙控器 (單面版)
+// ==========================================
+let isAIPausedByHR = false; // 紀錄目前 AI 是不是被暫停了
+
+function toggleAIPause() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        alert("⚠️ 尚未連線到伺服器，無法控制 AI！");
+        return;
+    }
+
+    const btn = document.getElementById('toggleAIBtn');
+    isAIPausedByHR = !isAIPausedByHR; // 切換狀態
+
+    if (isAIPausedByHR) {
+        // 1. 發送暫停訊號給後端
+        ws.send(JSON.stringify({ type: 'pause_ai', sessionId: targetSessionId }));
+        
+        // 2. 改變按鈕外觀，提醒 HR 現在是自己控場
+        if (btn) {
+            btn.innerText = "▶️ 恢復 AI 提問";
+            btn.style.background = "#e67e22"; // 變成橘色
+            btn.style.boxShadow = "0 0 10px #e67e22";
+        }
+        console.log("⏸️ 已發送強制暫停 AI 指令");
+    } else {
+        // 1. 發送恢復訊號給後端
+        ws.send(JSON.stringify({ type: 'resume_ai', sessionId: targetSessionId }));
+        
+        // 2. 把按鈕變回原本的樣子
+        if (btn) {
+            btn.innerText = "⏸️ 暫停 AI";
+            btn.style.background = "#34495e"; // 恢復深藍色
+            btn.style.boxShadow = "none";
+        }
+        console.log("▶️ 已發送恢復 AI 指令");
+    }
+}
 // 啟動戰情室動畫迴圈
 initGlobalAnimationLoop();

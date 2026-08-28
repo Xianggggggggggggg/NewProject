@@ -140,12 +140,12 @@ function setupWebSocket(options) {
             `;
 
             const managerPrompt = `
-                你現在正與「HR(人資)」共同面試一位應徵「${position}」的候選人。面試類型為：${interview_type}。
+                你現在正與「HR(人資)」共同面試一位應徵「${position}」的候選人。
                 
                 【企業背景設定】：
                 ${companyContext}
 
-                【人格設定】：你是部門技術主管。語氣嚴謹、實事求是、直指核心。
+                【人格設定】：你是部門主管。語氣嚴謹、實事求是、直指核心。
                 
                 【核心任務】：
                 1. 系統一開始不會給你聲音。當你收到「HR 已經交棒給你」的系統指令時，請立刻用語音開口。
@@ -220,21 +220,6 @@ function setupWebSocket(options) {
                 }
 
                 if (isInterviewEnded) return;
-
-/*
-                // 🎬 組員寫的專屬交接函數 (後端發動)
-                const executeHandover = (targetRole) => {
-                    console.log(`🚀 [系統強制介入] 啟動 ${targetRole} 的交接函數`);
-                    if (targetRole === 'HR') {
-                        isHRWrappingUp = true;
-                        const strictPrompt = `[系統指令] 你的階段提問任務已完成，準備交接。請先判斷應徵者最後的回答：1. 如果是有意義的內容，請給予 1 句話的自然回饋。2. 如果是無意義短句或亂碼，請「完全忽略」。判斷完後，請務必直接朗讀這句交接台詞：「了解，謝謝你的分享。接下來的技術與專業問題，我想交給部門主管來瞭解。」絕對不可再問新問題。`;
-                        if (hrWs && hrWs.readyState === WebSocket.OPEN) hrWs.send(JSON.stringify({ realtimeInput: { text: strictPrompt } }));
-                    } else if (targetRole === 'MANAGER') {
-                        isManagerWrappingUp = true;
-                        const strictPrompt = `[系統指令] 你的階段提問任務已完成，準備交接。請先判斷應徵者最後的回答：1. 如果是有意義的內容，請給予 1 句話的自然回饋。2. 如果是無意義短句或亂碼，請「完全忽略」。判斷完後，請務必直接朗讀這句交接台詞：「好的，謝謝你的說明。我的部分問完了，交還給人資。」絕對不可再問新問題。`;
-                        if (managerWs && managerWs.readyState === WebSocket.OPEN) managerWs.send(JSON.stringify({ realtimeInput: { text: strictPrompt } }));
-                    }
-                }; */
 
                 if (response.setupComplete && role === 'HR') {
                     clientWs.send(JSON.stringify({ setupComplete: true }));
@@ -520,10 +505,6 @@ function setupWebSocket(options) {
                     }
                     currentInterviewer = 'HUMAN_INTERVENING';
 
-                    // 🌟 修復「AI恢復時暫停太久」：不再送 stopMsg 叫 Gemini 講「待機」台詞。
-                    // 因為上面 currentInterviewer 的判斷（第219行）已經會擋掉聲音轉發，
-                    // 這句「待機」台詞其實沒人聽得到，卻會讓 Gemini 白白花時間生成語音，
-                    // 導致 resume 時的指令得排在它後面，造成明顯延遲。直接靜音等待即可。
                     return;
                 }
 

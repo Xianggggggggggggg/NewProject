@@ -48,6 +48,7 @@ window.isAIPaused = false;
 window.aiPhaseFinished = false;
 window.audioAnimationQueue = [];
 window.currentAiRole = 'HR';
+window.hasReceivedAiAudio = false;
 
 // 真人插話時備用聽寫打字員
 let userRecognition = null;
@@ -161,7 +162,8 @@ function setupFaceMesh() {
 // ==========================================
 // 3. UI 與音訊播放控制
 // ==========================================
-function appendTranscript(role, text, ai_role = 'HR', candidateName = '應徵者') {    if (typeof text !== 'string' || !text.trim()) return;
+function appendTranscript(role, text, ai_role = 'HR', candidateName = '應徵者') {
+    if (typeof text !== 'string' || !text.trim()) return;
 
     const box = document.getElementById('transcriptBox');
     if (!box) return;
@@ -468,6 +470,21 @@ async function startGroupInterview() {
                     try { userRecognition.start(); } catch (e) { }
                 }
             }
+            // ==========================================
+            // ⭐ AI 自己交接時，只清掉舊 audio queue
+            // ❗ 不代表真人 HR 插話
+            // ==========================================
+            if (
+                data.customType ===
+                'clear_ai_audio_queue'
+            ) {
+                console.log(
+                    "🧹 [AI 交接] 清除舊 AI 音訊 queue"
+                );
+                stopAllAudio();
+
+                return;
+            }
             if (data.customType === 'kill_ai_audio') {
                 window.isAIPaused = true;
                 stopAllAudio();
@@ -496,7 +513,11 @@ async function startGroupInterview() {
 
             if (data.serverContent?.modelTurn?.parts) {
                 if (window.isAIPaused) return;
-                window.currentAiRole = data.ai_role || window.currentAiRole || '技術主管';
+                window.hasReceivedAiAudio = true;
+                window.currentAiRole =
+                    data.ai_role ||
+                    window.currentAiRole ||
+                    '技術主管';                
                 let roleStr = window.currentAiRole.toUpperCase();
                 let targetId = roleStr.includes('HR') ? 'aiModel_HR' : 'aiModel_Tech';
 
@@ -523,7 +544,19 @@ async function startGroupInterview() {
                 wsReady: ws?.readyState,
                 isSetupComplete
             });
-            if (ws && ws.readyState === WebSocket.OPEN && isSetupComplete) {
+            const aiAudioStillPlaying =
+                audioContext &&
+                nextPlayTime > audioContext.currentTime + 0.05;
+
+            if (
+                ws &&
+                ws.readyState === WebSocket.OPEN &&
+                isSetupComplete &&
+                window.hasReceivedAiAudio &&
+                !aiAudioStillPlaying &&
+                !window.isAIPaused &&
+                !window.aiPhaseFinished
+            ) {
                 const inputData = e.inputBuffer.getChannelData(0);
                 let rms = 0;
                 for (let i = 0; i < inputData.length; i++) {
@@ -544,16 +577,17 @@ async function startGroupInterview() {
                     rms: rms,
                     isMainSpeaker: isMainSpeaker
                 });
-                    ws.send(JSON.stringify({
-                        sessionId: window.currentSessionId,
-                        speakerActive: isMainSpeaker,
-                        realtimeInput: {
-                            audio: {
-                                mimeType: "audio/pcm;rate=16000",
-                                data: base64Audio
-                            }
+                ws.send(JSON.stringify({
+                    sessionId: window.currentSessionId,
+                    speakerActive: isMainSpeaker,
+                    realtimeInput: {
+                        audio: {
+                            mimeType: "audio/pcm;rate=16000",
+                            data: base64Audio
                         }
-                    }));            }
+                    }
+                }));
+            }
         };
 
         const sourceNode = audioContext.createMediaStreamSource(stream);
@@ -621,11 +655,11 @@ function connectToNewUser(peerId, stream) {
 function addVideoStream(video, stream, elementId = '') {
     video.srcObject = stream;
     if (elementId) video.id = elementId;
-    
+
     // 🌟 關鍵修復 1：加上手機與嚴格瀏覽器必備的屬性！
-    video.setAttribute('playsinline', ''); 
-    video.setAttribute('autoplay', '');    
-    
+    video.setAttribute('playsinline', '');
+    video.setAttribute('autoplay', '');
+
     video.addEventListener('loadedmetadata', () => {
         video.play().catch(err => {
             console.warn("⚠️ 瀏覽器阻擋了自動播放，請確認網頁互動狀態:", err);
