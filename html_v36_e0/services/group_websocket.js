@@ -981,25 +981,6 @@ function setupGroupWebSocket(options) {
 
                         roomState.userSpeechBuffer += partialText;
 
-                        const immediateUserText =
-                            convert(partialText)
-                                .replace(
-                                    /([\u3400-\u9FFF])\s+(?=[\u3400-\u9FFF])/g,
-                                    '$1'
-                                )
-                                .replace(
-                                    /\s+([，。！？、,.!?])/g,
-                                    '$1'
-                                )
-                                .trim();
-
-                        if (immediateUserText) {
-                            tryStartHandover(
-                                role,
-                                immediateUserText
-                            );
-                        }
-
                         if (roomState.userFlushTimeout) {
                             clearTimeout(roomState.userFlushTimeout);
                         }
@@ -1025,6 +1006,11 @@ function setupGroupWebSocket(options) {
                             roomState.userSpeechCandidateName = null;
 
                             if (!finalUserText) return;
+                            // ⭐ 候選人完整回答結束後，才檢查是否需要交接
+                            tryStartHandover(
+                                role,
+                                finalUserText
+                            );
 
                             console.log(
                                 `👤 [${speechCandidateName}] ${finalUserText}`
