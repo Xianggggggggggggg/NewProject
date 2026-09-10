@@ -359,14 +359,6 @@ function setupGroupWebSocket(options) {
                             roomState.managerTargetRounds
                         );
 
-                    // ⭐ 交接前必須確認：這一題已經輪到最後一位應徵者
-                    const lastCandidate =
-                        candidatesList[candidatesList.length - 1];
-
-                    const isLastCandidateTurn =
-                        lastCandidate &&
-                        roomState.currentCandidateResumeId === lastCandidate.resumeId;
-
                     const alreadyWrapping =
                         role === 'HR'
                             ? roomState.isHRWrappingUp
@@ -374,14 +366,13 @@ function setupGroupWebSocket(options) {
 
                     if (
                         !isTargetReached ||
-                        !isLastCandidateTurn ||
                         alreadyWrapping ||
                         roomState.isFinalStage ||
                         roomState.aiPhaseFinished
                     ) {
                         return;
                     }
-                    
+
                     console.log(
                         `🚀 [預先注入] ${role} 達到目標，準備交接`
                     );
