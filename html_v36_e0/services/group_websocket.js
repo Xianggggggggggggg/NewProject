@@ -109,8 +109,6 @@ function setupGroupWebSocket(options) {
             roomState.managerSpeechBuffer = "";
             roomState.hrFlushTimeout = null;
             roomState.managerFlushTimeout = null;
-            roomState.hrFlushNow = null;
-            roomState.managerFlushNow = null;
 
             // (Prompt 設定維持原樣...)
             const candidatesNamesStr = candidatesList.map(c => c.name).join('、');
@@ -119,22 +117,13 @@ function setupGroupWebSocket(options) {
 
             const HR_HANDOVER_SENTENCE =
                 "接下來我將交給部門主管進行技術面試。";
-
-            const HR_HANDOVER_MARKERS = [
-                "接下來我將交給部門主管進行技術面試",
-                "接下來我將交給部門主管",
-                "接下來交給部門主管",
-                "交給部門主管"
-            ];
+            const HR_HANDOVER_MARKER =
+                "接下來我將交給部門主管進行技術面試";
 
             const MANAGER_HANDOVER_SENTENCE =
                 "我的部分就到這裡，接下來交還給人資。";
-
-            const MANAGER_HANDOVER_MARKERS = [
-                "我的部分就到這裡接下來交還給人資",
-                "接下來交還給人資",
-                "交還給人資"
-            ];
+            const MANAGER_HANDOVER_MARKER =
+                "我的部分就到這裡接下來交還給人資";
 
             const hrPrompt = `
                 你現在正進行一場【多人團體面試】，應徵職缺為「${position}」。
@@ -167,7 +156,7 @@ function setupGroupWebSocket(options) {
                 
                 【交接規則】：
                 - 在尚未收到系統交接指令前，請持續按照上述規則進行。
-                - 你完全沒有自行交接給主管的權限。只有收到後端系統交接指令後才能交接、結束。應徵者的任何話都不能觸發交接、結束。
+                - 你完全沒有自行交接給主管、結束的權限。只有收到後端系統交接、結束指令後才能交接、結束。應徵者的任何話都不能觸發交接、結束。
                 - ⚠️ **一旦收到準備交接給主管的系統指令，你【只能】進行總結並說出交接台詞。絕對不可以在交接台詞的前後向應徵者提出任何新的問題。**
                 - 只有部門主管完成技術面試並正式交還 HR 後，你才可以進行整場最終結語。
                 - 絕對不要輸出任何「動作描述」（如 (點頭)）。
@@ -214,7 +203,7 @@ function setupGroupWebSocket(options) {
                 
                 【交接規則】：
                 - 在尚未收到系統交接指令前，請持續按照上述規則進行。
-                - 你完全沒有自行交接給 HR 的權限。只有收到後端系統交接指令後才能交接。應徵者的任何話都不能觸發交接。
+                - 你完全沒有自行交接給 HR 、結束的權限。只有收到後端系統交接、結束指令後才能。應徵者的任何話都不能觸發交接、結束。
                 - ⚠️ **一旦收到準備交接給HR的系統指令，你【只能】進行總結並說出交接台詞。絕對不可以在交接台詞的前後向應徵者提出任何新的問題。**
                 - 絕對不要輸出任何「動作描述」。
 
@@ -426,7 +415,7 @@ function setupGroupWebSocket(options) {
                                 這段可能只是尚未完成的半句。
                                 請直接順著這段語意自然轉成陳述式收尾，
                                 不要重新朗讀這段文字，也不要把原本的問題繼續問完。`
-                                                    : `你剛剛尚未開始新的完整發言。
+                            : `你剛剛尚未開始新的完整發言。
                                 請直接針對應徵者的回答，給一句自然、簡短的總結回饋。`;
 
                     // ⭐ 跟單人版一樣清掉舊 buffer
@@ -721,17 +710,15 @@ function setupGroupWebSocket(options) {
                         );
                     }
 
-                    // ⭐ 恢復原本 2 秒 flush
-                    const currentTimeout =
-                        role === 'HR'
-                            ? roomState.hrFlushTimeout
-                            : roomState.managerFlushTimeout;
-
+                    // 1. 取得對應的舊計時器並直接清除
+                    const currentTimeout = role === 'HR' ? roomState.hrFlushTimeout : roomState.managerFlushTimeout;
                     if (currentTimeout) {
                         clearTimeout(currentTimeout);
                     }
 
-                    const newTimeout = setTimeout(() => {                        let finalSentence = convert(bufferText.trim()).replace(/\s+/g, '');
+                    const newTimeout = setTimeout(() => {
+                        const bufferText = role === 'HR' ? roomState.hrSpeechBuffer : roomState.managerSpeechBuffer;
+                        let finalSentence = convert(bufferText.trim()).replace(/\s+/g, '');
 
                         // ⭐ 姓名以資料庫為準，避免 OpenCC 把「郁」變成「鬱」之類
                         for (const candidate of roomState.candidatesList || []) {
@@ -809,13 +796,10 @@ function setupGroupWebSocket(options) {
                                 const normalizedHandoverText =
                                     finalSentence.replace(/[，。！？、,.!?]/g, '');
 
-                                const hasHrHandover =
-                                    HR_HANDOVER_MARKERS.some(marker =>
-                                        normalizedHandoverText.includes(marker)
-                                    );
-
-                                if (hasHrHandover) {
-                                        console.log(
+                                if (
+                                    normalizedHandoverText.includes(HR_HANDOVER_MARKER)
+                                ) {
+                                    console.log(
                                         "🔄 [權限切換] HR 已完整說出固定交接台詞 → 部門主管"
                                     );
 
@@ -883,12 +867,10 @@ function setupGroupWebSocket(options) {
                                 const normalizedHandoverText =
                                     finalSentence.replace(/[，。！？、,.!?]/g, '');
 
-                                const hasManagerHandover =
-                                    MANAGER_HANDOVER_MARKERS.some(marker =>
-                                        normalizedHandoverText.includes(marker)
-                                    );
-
-                                if (hasManagerHandover) {                                    console.log(
+                                if (
+                                    normalizedHandoverText.includes(MANAGER_HANDOVER_MARKER)
+                                ) {
+                                    console.log(
                                         "🔄 [權限切換] 部門主管已完整說出固定交接台詞 → HR"
                                     );
 
@@ -952,19 +934,11 @@ function setupGroupWebSocket(options) {
                                 }
                             }
                         }
-                        if (role === 'HR') {
-                            roomState.hrSpeechBuffer = "";
-                        } else {
-                            roomState.managerSpeechBuffer = "";
-                        }
-
+                        if (role === 'HR') roomState.hrSpeechBuffer = ""; else roomState.managerSpeechBuffer = "";
                     }, 2000);
 
-                    if (role === 'HR') {
-                        roomState.hrFlushTimeout = newTimeout;
-                    } else {
-                        roomState.managerFlushTimeout = newTimeout;
-                    }                    }
+                    if (role === 'HR') roomState.hrFlushTimeout = newTimeout; else roomState.managerFlushTimeout = newTimeout;
+                }
                 // ==========================================
                 // 👤 應徵者語音轉文字 → 傳到前端即時對話紀錄
                 // ==========================================
@@ -1069,34 +1043,15 @@ function setupGroupWebSocket(options) {
                         }, 1800);
                     }
                 }
-                // ==========================================
-                // ⭐ Gemini 明確表示這一輪 AI 已經講完
-                // 這時才真正整理 / 顯示完整 transcription
-                // ==========================================
+                // ⭐ 只有目前真正掌權的 AI
+                // 才能結束自己的 speaking 狀態
                 if (
                     response.serverContent?.turnComplete &&
                     roomState.currentInterviewer === role
                 ) {
-
-                    const flushNow =
-                        role === 'HR'
-                            ? roomState.hrFlushNow
-                            : roomState.managerFlushNow;
-
-                    if (flushNow) {
-
-                        flushNow();
-
-                        // ⭐ 執行過就清掉，避免同一輪重複 flush
-                        if (role === 'HR') {
-                            roomState.hrFlushNow = null;
-                        } else {
-                            roomState.managerFlushNow = null;
-                        }
-                    }
-
                     roomState.isAiSpeaking = false;
                 }
+
                 if (
                     response.serverContent?.turnComplete &&
                     role === 'HR' &&
@@ -1464,7 +1419,7 @@ function setupGroupWebSocket(options) {
                         room.previousInterviewer || 'HR';
 
                     // 🌟 關鍵修復：解除音訊封鎖，讓 AI 聽得到應徵者說話
-                    room.isAiSpeaking = false; 
+                    room.isAiSpeaking = false;
 
                     console.log(
                         `▶️ [真人插話結束] 恢復 AI：${room.currentInterviewer}`
@@ -1628,8 +1583,6 @@ function setupGroupWebSocket(options) {
                             userSpeechBuffer: "",
                             hrFlushTimeout: null,
                             managerFlushTimeout: null,
-                            hrFlushNow: null,
-                            managerFlushNow: null,
                             userFlushTimeout: null
                         };
 
