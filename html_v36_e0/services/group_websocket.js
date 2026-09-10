@@ -796,14 +796,12 @@ function setupGroupWebSocket(options) {
                                 const normalizedHandoverText =
                                     finalSentence.replace(/[，。！？、,.!?]/g, '');
 
-                                if (
-                                    normalizedHandoverText.includes(HR_HANDOVER_MARKER)
-                                ) {
+                                // 🌟 核心修復 3B：放寬交接給人資的判斷
+                                if (finalSentence.includes('人資') || finalSentence.includes('交還') ) {
                                     console.log(
-                                        "🔄 [權限切換] HR 已完整說出固定交接台詞 → 部門主管"
+                                        "🔄 [權限切換] 部門主管已說出交接台詞 → HR"
                                     );
 
-                                    // ⭐ 立刻鎖住 HR
                                     roomState.currentInterviewer = 'HANDOVER';
 
                                     // ⭐ 清除交接狀態，避免同一句觸發兩次
@@ -867,13 +865,12 @@ function setupGroupWebSocket(options) {
                                 const normalizedHandoverText =
                                     finalSentence.replace(/[，。！？、,.!?]/g, '');
 
-                                if (
-                                    normalizedHandoverText.includes(MANAGER_HANDOVER_MARKER)
-                                ) {
+                                if (finalSentence.includes('部門主管') || finalSentence.includes('交給')) {
                                     console.log(
-                                        "🔄 [權限切換] 部門主管已完整說出固定交接台詞 → HR"
+                                        "🔄 [權限切換] HR 已說出交接台詞 → 部門主管"
                                     );
 
+                                    // ⭐ 立刻鎖住 HR
                                     roomState.currentInterviewer = 'HANDOVER';
 
                                     roomState.isManagerWrappingUp = false;
