@@ -969,24 +969,6 @@ function setupGroupWebSocket(options) {
 
                         roomState.userSpeechBuffer += partialText;
 
-                        const immediateUserText =
-                            convert(partialText)
-                                .replace(
-                                    /([\u3400-\u9FFF])\s+(?=[\u3400-\u9FFF])/g,
-                                    '$1'
-                                )
-                                .replace(
-                                    /\s+([，。！？、,.!?])/g,
-                                    '$1'
-                                )
-                                .trim();
-
-                        if (immediateUserText) {
-                            tryStartHandover(
-                                role,
-                                immediateUserText
-                            );
-                        }
 
                         if (roomState.userFlushTimeout) {
                             clearTimeout(roomState.userFlushTimeout);
@@ -1000,14 +982,17 @@ function setupGroupWebSocket(options) {
                                 .replace(/([\u3400-\u9FFF])\s+(?=[\u3400-\u9FFF])/g, '$1')
                                 .replace(/\s+([，。！？、,.!?])/g, '$1');
 
-                            // ⭐ 在清空前，先把這段真正的講話者存起來
                             const speechCandidateName =
                                 roomState.userSpeechCandidateName ||
                                 roomState.lastAudioCandidateName ||
                                 '應徵者';
 
-                            roomState.userSpeechBuffer = "";
+                            // ⭐ 在清空前一起記住真正講話者的 resumeId
+                            const speechCandidateResumeId =
+                                roomState.userSpeechCandidateResumeId ||
+                                roomState.lastAudioCandidateResumeId;
 
+                            roomState.userSpeechBuffer = "";
                             // ⭐ 這段話結束，解除鎖定
                             roomState.userSpeechCandidateResumeId = null;
                             roomState.userSpeechCandidateName = null;
@@ -1039,6 +1024,21 @@ function setupGroupWebSocket(options) {
                                     c.send(userMsg);
                                 }
                             });
+
+                            // ⭐ 只有這一題最後一位應徵者「完整回答完」後
+                            // ⭐ 才檢查題數是否已達標並開始交接
+                            const lastCandidate =
+                                candidatesList[candidatesList.length - 1];
+
+                            if (
+                                lastCandidate &&
+                                speechCandidateResumeId === lastCandidate.resumeId
+                            ) {
+                                tryStartHandover(
+                                    role,
+                                    finalUserText
+                                );
+                            }
 
                         }, 1800);
                     }
