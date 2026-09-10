@@ -153,6 +153,8 @@ function setupGroupWebSocket(options) {
                 每次要指定某位應徵者開始回答時，你的最後一句必須「逐字」使用以下格式：
                 「現在請完整姓名回答。」例如：「現在請王小明回答。」
                 前面的回饋內容可以提到任何人的姓名，但只有「現在請完整姓名回答。」這個固定句型代表真正切換回答者。
+                9.只有提出「全新的正式面試題目」時，整段發言才可以且必須恰好出現一個全形問號「？」；同一題換人回答、重複、澄清、改述、回饋、圓場、提醒、交接或結語時，一律不得出現任何問號。
+
                 
                 【交接規則】：
                 - 在尚未收到系統交接指令前，請持續按照上述規則進行。
@@ -200,6 +202,8 @@ function setupGroupWebSocket(options) {
                 每次要指定某位應徵者開始回答時，你的最後一句必須「逐字」使用以下格式：
                 「現在請完整姓名回答。」例如：「現在請王小明回答。」
                 前面的回饋內容可以提到任何人的姓名，但只有「現在請完整姓名回答。」這個固定句型代表真正切換回答者。
+                9.只有提出「全新的正式面試題目」時，整段發言才可以且必須恰好出現一個全形問號「？」；同一題換人回答、重複、澄清、改述、回饋、圓場、提醒、交接或結語時，一律不得出現任何問號。
+
                 
                 【交接規則】：
                 - 在尚未收到系統交接指令前，請持續按照上述規則進行。
@@ -358,6 +362,13 @@ function setupGroupWebSocket(options) {
                             roomState.managerRoundCount >=
                             roomState.managerTargetRounds
                         );
+                    // ⭐ 交接前必須確認：這一題已經輪到最後一位應徵者
+                    const lastCandidate =
+                        candidatesList[candidatesList.length - 1];
+
+                    const isLastCandidateTurn =
+                        lastCandidate &&
+                        roomState.currentCandidateResumeId === lastCandidate.resumeId;
 
                     const alreadyWrapping =
                         role === 'HR'
@@ -366,13 +377,13 @@ function setupGroupWebSocket(options) {
 
                     if (
                         !isTargetReached ||
+                        !isLastCandidateTurn ||
                         alreadyWrapping ||
                         roomState.isFinalStage ||
                         roomState.aiPhaseFinished
                     ) {
                         return;
                     }
-
                     console.log(
                         `🚀 [預先注入] ${role} 達到目標，準備交接`
                     );
@@ -796,10 +807,11 @@ function setupGroupWebSocket(options) {
                                 const normalizedHandoverText =
                                     finalSentence.replace(/[，。！？、,.!?]/g, '');
 
-                                if (
-                                    normalizedHandoverText.includes(HR_HANDOVER_MARKER)
-                                ) {
-                                    console.log(
+                                const hasHrHandover =
+                                    normalizedHandoverText.includes('交給') &&
+                                    normalizedHandoverText.includes('主管');
+
+                                if (hasHrHandover) {                                    console.log(
                                         "🔄 [權限切換] HR 已完整說出固定交接台詞 → 部門主管"
                                     );
 
