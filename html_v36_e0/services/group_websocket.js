@@ -721,11 +721,17 @@ function setupGroupWebSocket(options) {
                         );
                     }
 
-                    // ⭐ 不再用固定 2 秒判斷 AI 是否講完
-                    // 這裡只準備「完整整理這一輪 AI 發言」的函式
-                    // 真正執行時間改到 serverContent.turnComplete
-                    const flushCurrentAiSpeech = () => {                       const bufferText = role === 'HR' ? roomState.hrSpeechBuffer : roomState.managerSpeechBuffer;
-                        let finalSentence = convert(bufferText.trim()).replace(/\s+/g, '');
+                    // ⭐ 恢復原本 2 秒 flush
+                    const currentTimeout =
+                        role === 'HR'
+                            ? roomState.hrFlushTimeout
+                            : roomState.managerFlushTimeout;
+
+                    if (currentTimeout) {
+                        clearTimeout(currentTimeout);
+                    }
+
+                    const newTimeout = setTimeout(() => {                        let finalSentence = convert(bufferText.trim()).replace(/\s+/g, '');
 
                         // ⭐ 姓名以資料庫為準，避免 OpenCC 把「郁」變成「鬱」之類
                         for (const candidate of roomState.candidatesList || []) {
@@ -952,15 +958,13 @@ function setupGroupWebSocket(options) {
                             roomState.managerSpeechBuffer = "";
                         }
 
-                    };
+                    }, 2000);
 
-                    // ⭐ 每次收到新的 transcription chunk
-                    // 都更新「這一輪講完時要執行的 flush」
                     if (role === 'HR') {
-                        roomState.hrFlushNow = flushCurrentAiSpeech;
+                        roomState.hrFlushTimeout = newTimeout;
                     } else {
-                        roomState.managerFlushNow = flushCurrentAiSpeech;
-                    }                }
+                        roomState.managerFlushTimeout = newTimeout;
+                    }                    }
                 // ==========================================
                 // 👤 應徵者語音轉文字 → 傳到前端即時對話紀錄
                 // ==========================================
