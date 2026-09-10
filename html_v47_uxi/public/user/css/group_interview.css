@@ -1,0 +1,223 @@
+/* 📁 public/css/group_interview.css */
+
+:root {
+    --primary-green: #799851;
+    --primary-green-hover: #799851;
+    --glass-bg: rgba(255, 255, 255, 0.65);
+    --glass-border: rgba(255, 255, 255, 1);
+    --glass-shadow: rgba(0, 0, 0, 0.05);
+    --glass-blur: blur(16px); 
+    --text-main: #2d3436;
+    --text-sub: #636e72;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f4f7f8;
+    background-image:
+        radial-gradient(circle at 15% 50%, rgba(16, 172, 132, 0.08), transparent 30%),
+        radial-gradient(circle at 85% 30%, rgba(41, 128, 185, 0.05), transparent 30%);
+    background-size: cover;
+    background-attachment: fixed;
+    color: var(--text-main);
+    height: calc(100vh - 40px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 毛玻璃面板效果 */
+.glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1.5px solid var(--glass-border);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px 0 var(--glass-shadow);
+}
+
+/* 🌟 核心佈局：左右分割 (已修正：加上 box-sizing 防止撐破) */
+.layout-wrapper {
+    display: flex;
+    gap: 20px; /* 微調間距 */
+    width: 100%;
+    max-width: 1400px;
+    height: 85vh;
+    align-items: stretch;
+    box-sizing: border-box; 
+}
+
+/* 🎥 左側：視訊主舞台區 (已修正：改為彈性 flex: 1 並防止子元素撐破) */
+.video-section {
+    flex: 1; 
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    min-width: 0; 
+}
+
+/* 👑 頂部考官主舞台 (更新為 3 個寬度分配) */
+.ai-stage {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    width: 100%;
+}
+
+.ai-box {
+    flex: 1; /* 讓 3 個框平分左側寬度 */
+    height: 180px; /* 稍微縮短一點高度，避免主舞台吃掉太多九宮格空間 */
+    position: relative;
+    overflow: hidden;
+    border-bottom: 5px solid var(--primary-green);
+}
+
+/* 🕵️ 真人考官等待加入的背景樣式 */
+.waiting-placeholder {
+    width: 100%;
+    height: 100%;
+    background: #2d3436;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #b2bec3;
+    font-size: 14px;
+    letter-spacing: 1px;
+    border-radius: 12px;
+}
+
+/* 對嘴影片切換 */
+.video-avatar {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    position: absolute;
+    top: 0;
+    left: 0;
+    border-radius: 12px;
+    transition: opacity 0.2s ease-in-out;
+}
+#talkVideo_Tech.active, #talkVideo_HR.active {
+    opacity: 1 !important;
+    z-index: 5;
+}
+
+.ai-label {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-weight: bold;
+    color: white;
+    text-shadow: 1px 1px 4px rgba(0,0,0,0.8);
+    z-index: 10;
+    font-size: 14px;
+    background: rgba(0,0,0,0.4);
+    padding: 4px 12px;
+    border-radius: 20px;
+    letter-spacing: 1px;
+}
+
+/* 👥 底部真人應徵者動態九宮格 */
+.section-title {
+    font-size: 14px;
+    font-weight: bold;
+    color: var(--text-sub);
+    letter-spacing: 2px;
+    text-align: center;
+    margin: 5px 0;
+}
+
+/* 已修正：強制隱藏橫向滾動條 */
+#video-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 15px;
+    overflow-y: auto;
+    overflow-x: hidden; 
+}
+
+/* 🌟 隱藏醜醜的滾動條，但保留上下滾動功能 */
+#video-grid::-webkit-scrollbar {
+    display: none; 
+}
+
+/* 已修正：加上 box-sizing: border-box 避免邊框撐破寬度 */
+#video-grid video {
+    width: 100%;
+    height: 100%;
+    min-height: 150px;
+    box-sizing: border-box; 
+    object-fit: cover;
+    border-radius: 14px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    border: 2px solid rgba(255, 255, 255, 0.8);
+    transform: scaleX(-1);
+}
+
+/* 💬 右側：對話紀錄區 (已修正：設定固定寬度 350px 且絕對不縮水) */
+.chat-section {
+    width: 350px;       
+    flex-shrink: 0;     
+    padding: 25px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.chat-header {
+    font-size: 18px;
+    font-weight: bold;
+    color: var(--primary-green);
+    margin-bottom: 15px;
+    border-bottom: 2px solid rgba(121, 152, 81, 0.2);
+    padding-bottom: 10px;
+    letter-spacing: 1px;
+}
+
+#transcriptBox {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 5px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* 對話氣泡 */
+.ai-msg {
+    color: var(--text-main);
+    line-height: 1.6;
+    padding: 15px;
+    background: #fff;
+    border-radius: 8px;
+    border-left: 4px solid var(--primary-green);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+    font-size: 14px;
+}
+
+.user-msg {
+    color: var(--text-main);
+    line-height: 1.6;
+    padding: 15px;
+    background: #e8f0fe;
+    border-radius: 8px;
+    border-right: 4px solid #1a73e8;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+    align-self: flex-end;
+    width: 85%;
+    font-size: 14px;
+}
+
+/* 狀態列 */
+.status-bar {
+    text-align: center;
+    font-size: 15px;
+    color: var(--primary-green);
+    font-weight: bold;
+    letter-spacing: 1px;
+}
