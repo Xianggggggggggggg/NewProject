@@ -359,6 +359,14 @@ function setupGroupWebSocket(options) {
                             roomState.managerTargetRounds
                         );
 
+                    // ⭐ 交接前必須確認：這一題已經輪到最後一位應徵者
+                    const lastCandidate =
+                        candidatesList[candidatesList.length - 1];
+
+                    const isLastCandidateTurn =
+                        lastCandidate &&
+                        roomState.currentCandidateResumeId === lastCandidate.resumeId;
+
                     const alreadyWrapping =
                         role === 'HR'
                             ? roomState.isHRWrappingUp
@@ -366,6 +374,7 @@ function setupGroupWebSocket(options) {
 
                     if (
                         !isTargetReached ||
+                        !isLastCandidateTurn ||
                         alreadyWrapping ||
                         roomState.isFinalStage ||
                         roomState.aiPhaseFinished
@@ -788,20 +797,23 @@ function setupGroupWebSocket(options) {
                             // ==========================================
                             if (
                                 role === 'HR' &&
-                                roomState.isHRWrappingUp &&
-                                roomState.pendingHandover === 'HR_TO_MANAGER' &&
                                 roomState.currentInterviewer === 'HR'
                             ) {
-                                // ⭐ 去掉標點，避免句號辨識差異
+                                // ⭐ 去掉標點，避免辨識差異
                                 const normalizedHandoverText =
                                     finalSentence.replace(/[，。！？、,.!?]/g, '');
 
-                                // 🌟 核心修復 3B：放寬交接給人資的判斷
-                                if (finalSentence.includes('人資') || finalSentence.includes('交還') ) {
-                                    console.log(
-                                        "🔄 [權限切換] 部門主管已說出交接台詞 → HR"
+                                // ⭐ HR 只要真的說到「交給」＋「主管」
+                                // 就直接正式交接，不再二次檢查題數或 wrapping 狀態
+                                const hasHrHandover =
+                                    normalizedHandoverText.includes('交給') &&
+                                    normalizedHandoverText.includes('主管');
+
+                                if (hasHrHandover) {                                    console.log(
+                                        "🔄 [權限切換] HR 已完整說出固定交接台詞 → 部門主管"
                                     );
 
+                                    // ⭐ 立刻鎖住 HR
                                     roomState.currentInterviewer = 'HANDOVER';
 
                                     // ⭐ 清除交接狀態，避免同一句觸發兩次
@@ -865,12 +877,13 @@ function setupGroupWebSocket(options) {
                                 const normalizedHandoverText =
                                     finalSentence.replace(/[，。！？、,.!?]/g, '');
 
-                                if (finalSentence.includes('部門主管') || finalSentence.includes('交給')) {
+                                if (
+                                    normalizedHandoverText.includes(MANAGER_HANDOVER_MARKER)
+                                ) {
                                     console.log(
-                                        "🔄 [權限切換] HR 已說出交接台詞 → 部門主管"
+                                        "🔄 [權限切換] 部門主管已完整說出固定交接台詞 → HR"
                                     );
 
-                                    // ⭐ 立刻鎖住 HR
                                     roomState.currentInterviewer = 'HANDOVER';
 
                                     roomState.isManagerWrappingUp = false;
@@ -966,6 +979,24 @@ function setupGroupWebSocket(options) {
 
                         roomState.userSpeechBuffer += partialText;
 
+                        const immediateUserText =
+                            convert(partialText)
+                                .replace(
+                                    /([\u3400-\u9FFF])\s+(?=[\u3400-\u9FFF])/g,
+                                    '$1'
+                                )
+                                .replace(
+                                    /\s+([，。！？、,.!?])/g,
+                                    '$1'
+                                )
+                                .trim();
+
+                        if (immediateUserText) {
+                            tryStartHandover(
+                                role,
+                                immediateUserText
+                            );
+                        }
 
                         if (roomState.userFlushTimeout) {
                             clearTimeout(roomState.userFlushTimeout);
@@ -979,17 +1010,14 @@ function setupGroupWebSocket(options) {
                                 .replace(/([\u3400-\u9FFF])\s+(?=[\u3400-\u9FFF])/g, '$1')
                                 .replace(/\s+([，。！？、,.!?])/g, '$1');
 
+                            // ⭐ 在清空前，先把這段真正的講話者存起來
                             const speechCandidateName =
                                 roomState.userSpeechCandidateName ||
                                 roomState.lastAudioCandidateName ||
                                 '應徵者';
 
-                            // ⭐ 在清空前一起記住真正講話者的 resumeId
-                            const speechCandidateResumeId =
-                                roomState.userSpeechCandidateResumeId ||
-                                roomState.lastAudioCandidateResumeId;
-
                             roomState.userSpeechBuffer = "";
+
                             // ⭐ 這段話結束，解除鎖定
                             roomState.userSpeechCandidateResumeId = null;
                             roomState.userSpeechCandidateName = null;
@@ -1021,21 +1049,6 @@ function setupGroupWebSocket(options) {
                                     c.send(userMsg);
                                 }
                             });
-
-                            // ⭐ 只有這一題最後一位應徵者「完整回答完」後
-                            // ⭐ 才檢查題數是否已達標並開始交接
-                            const lastCandidate =
-                                candidatesList[candidatesList.length - 1];
-
-                            if (
-                                lastCandidate &&
-                                speechCandidateResumeId === lastCandidate.resumeId
-                            ) {
-                                tryStartHandover(
-                                    role,
-                                    finalUserText
-                                );
-                            }
 
                         }, 1800);
                     }
