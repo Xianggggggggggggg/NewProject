@@ -854,12 +854,114 @@ function setupGroupWebSocket(options) {
                                             }));
 
                                         } else {
-                                            console.error(
-                                                "❌ [權限切換失敗] Manager WebSocket 非 OPEN",
+                                            console.warn(
+                                                "⚠️ Manager WebSocket 非 OPEN，重新建立主管連線",
                                                 roomState.managerWs?.readyState
                                             );
-                                        }
 
+                                            const newManagerWs =
+                                                new WebSocket(GEMINI_WS_URL);
+
+                                            roomState.managerWs = newManagerWs;
+
+                                            newManagerWs.on('open', () => {
+
+                                                console.log(
+                                                    "🟡 [Gemini Manager] 交接重連 WebSocket OPEN"
+                                                );
+
+                                                newManagerWs.send(JSON.stringify({
+                                                    setup: {
+                                                        model: MODEL_NAME,
+
+                                                        systemInstruction: {
+                                                            parts: [{
+                                                                text: managerPrompt
+                                                            }]
+                                                        },
+
+                                                        generationConfig: {
+                                                            responseModalities: ["AUDIO"],
+                                                            speechConfig: {
+                                                                voiceConfig: {
+                                                                    prebuiltVoiceConfig: {
+                                                                        voiceName: "Enceladus"
+                                                                    }
+                                                                }
+                                                            }
+                                                        },
+
+                                                        inputAudioTranscription: {},
+                                                        outputAudioTranscription: {},
+
+                                                        realtimeInputConfig: {
+                                                            automaticActivityDetection: {
+                                                                silenceDurationMs: 3000
+                                                            }
+                                                        }
+                                                    }
+                                                }));
+                                            });
+
+                                            const managerReconnectHandler = (data) => {
+
+                                                const managerResponse =
+                                                    JSON.parse(data.toString());
+
+                                                // ⭐ Setup 完成後才正式叫主管開始
+                                                if (managerResponse.setupComplete) {
+
+                                                    console.log(
+                                                        "✅ [Gemini Manager] 重連完成，正式接手"
+                                                    );
+
+                                                    newManagerWs.off(
+                                                        'message',
+                                                        managerReconnectHandler
+                                                    );
+
+                                                    // 後續所有 Manager 回覆交回原本處理器
+                                                    newManagerWs.on(
+                                                        'message',
+                                                        data => handleAiResponse('MANAGER', data)
+                                                    );
+
+                                                    roomState.isAiSpeaking = true;
+
+                                                    newManagerWs.send(JSON.stringify({
+                                                        realtimeInput: {
+                                                            text: `HR 已經正式交棒給你。
+請立刻開始技術面試，提出第一個完整的技術問題。
+問題必須與「${position}」職缺、應徵者履歷或實際技術能力相關。
+問題說完後，最後一句必須逐字說：
+「現在請${firstCandidate.name}回答。」`
+                                                        }
+                                                    }));
+                                                }
+                                            };
+
+                                            newManagerWs.on(
+                                                'message',
+                                                managerReconnectHandler
+                                            );
+
+                                            newManagerWs.on('close', (code, reason) => {
+                                                console.error(
+                                                    "🔴 [Gemini Manager 重連] WebSocket 關閉",
+                                                    {
+                                                        code,
+                                                        reason: reason.toString()
+                                                    }
+                                                );
+                                            });
+
+                                            newManagerWs.on('error', err => {
+                                                console.error(
+                                                    "❌ [Gemini Manager 重連] WebSocket 錯誤:",
+                                                    err.message
+                                                );
+                                            });
+                                        }
                                     }, 3000);
                                 }
                             }
