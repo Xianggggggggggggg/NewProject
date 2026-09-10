@@ -530,9 +530,12 @@ async function startGroupInterview() {
             }
 
             if (data.serverContent?.interrupted) {
-                stopAllAudio();
-            }
-        };
+                // ⭐ 團體面試不允許候選人在 AI 說話時打斷
+                // 所以 Gemini 的一般 interrupted 不要清掉已排隊的 AI 語音
+                console.log(
+                    "⚠️ 收到 Gemini interrupted，但保留目前 AI 音訊播放 queue"
+                );
+            }        };
 
         // 麥克風音訊處理與 PCM 轉換傳輸
         audioAnalyser = audioContext.createAnalyser();
