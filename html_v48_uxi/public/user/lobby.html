@@ -1,0 +1,31 @@
+
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>職缺大廳 - CareerLab</title>
+  <link rel="stylesheet" href="/user/css/style.css">
+</head>
+<body>
+  <div id="topbar-container"></div>
+  <div id="sidebar-container"></div>
+
+  <div class="section-container active" style="align-items: center;">
+    <h1 style="color: var(--primary-green); letter-spacing: 5px; margin-bottom: 10px;">CareerLab 職缺大廳</h1>
+    <p style="color: var(--text-sub); margin-bottom: 40px;">尋找適合你的理想職位</p>
+    
+    <div class="job-grid" id="job-grid-container"></div>
+
+    <template id="job-card-template">
+      <div class="job-card glass-panel js-card" style="padding: 25px; cursor: pointer; transition: 0.3s; position: relative;">
+        <div style="position: absolute; top: 20px; right: 20px; font-size: 24px; color: #ccc;">🔖</div>
+        <div class="js-dept" style="font-size: 14px; color: var(--text-sub); margin-bottom: 5px;"></div>
+        <div class="js-title" style="font-size: 22px; font-weight: bold; color: var(--text-main); margin-bottom: 15px;"></div>
+        <div class="js-salary" style="font-size: 16px; color: #d9534f; font-weight: bold;"></div>
+      </div>
+    </template>
+  </div>
+
+  <script src="/user/js/app.js" defer></script>
+</body>
+</html>

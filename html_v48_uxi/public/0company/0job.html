@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+  <meta charset="UTF-8">
+  <title>職缺管理 - CareerLab</title>
+  <link rel="stylesheet" href="../user/css/style.css">
+  <link rel="stylesheet" href="0css/0company.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body>
+  <div id="topbar-container"></div>
+  <div id="sidebar-container"></div>
+
+  <div id="job-list-section" class="section-container active">
+    <h2 style="color: var(--primary-green); margin-bottom: 20px;">💼 職缺管理</h2>
+
+    <div class="job-list-wrapper glass-panel" id="job-list-container">
+
+      <div class="job-row header-row">
+        <div class="col-dept">所屬部門</div>
+        <div class="col-title">職缺名稱</div>
+        <div class="col-count">需求人數</div>
+        <div class="col-action">操作</div>
+      </div>
+
+      <div id="job-list-body"></div>
+    </div>
+
+    <template id="job-template">
+      <div class="job-row item-row">
+        <div class="col-dept js-dept"></div>
+        <div class="col-title js-title"></div>
+        <div class="col-count">
+          <span class="count-badge js-count">0</span>
+        </div>
+        <div class="col-action">
+          <button class="icon-btn js-edit-btn">✏️</button>
+          <button class="icon-btn js-delete-btn">🗑️</button>
+        </div>
+      </div>
+    </template>
+
+    <button id="floating-add-btn" class="floating-add-btn" onclick="openJobModal()">＋ 新增職缺</button>
+  </div>
+
+  <div id="job-form-section" class="section-container" style="display: none;">
+
+    <div class="form-header-row">
+      <button class="btn-secondary" style="padding: 10px 20px; border-radius: 8px;" onclick="closeJobForm()">←
+        返回列表</button>
+      <h2 id="job-page-title" style="margin: 0; color: var(--primary-green);">新增職缺</h2>
+      <div style="width: 100px;"></div>
+    </div>
+
+    <input type="hidden" id="job-id">
+
+    <div class="form-card glass-panel">
+      <h3 class="card-title">基本設定</h3>
+      <div class="form-grid-3">
+        <div class="form-group">
+          <label>所屬部門</label>
+          <input type="text" id="job-dept" class="reg-input" placeholder="例如：行政部">
+        </div>
+        <div class="form-group">
+          <label>職缺名稱</label>
+          <input type="text" id="job-title" class="reg-input" placeholder="例如：業務行政管理師">
+        </div>
+        <div class="form-group">
+          <label>招募狀態</label>
+          <select id="job-status" class="reg-input">
+            <option value="開啟">🟢 開啟招募</option>
+            <option value="關閉">🔴 關閉 (暫停招募)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-card glass-panel">
+      <h3 class="card-title">工作內容</h3>
+
+      <div class="form-group">
+        <label>工作內容說明</label>
+        <textarea id="job-desc" class="reg-input" style="min-height: 150px;"
+          placeholder="此工作地點在新竹...&#10;&#10;✓訂單建檔與追蹤&#10;✓協助收送貨，出貨包裝及文件製作..."></textarea>
+      </div>
+
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label>工作性質</label>
+          <select id="job-type" class="reg-input">
+            <option value="全職">全職</option>
+            <optgroup label="兼職">
+              <option value="短期工讀">短期工讀</option>
+              <option value="長期工讀">長期工讀</option>
+              <option value="寒假工讀">寒假工讀</option>
+              <option value="暑期工讀">暑期工讀</option>
+              <option value="假日工讀">假日工讀</option>
+            </optgroup>
+            <option value="實習工作">實習工作</option>
+            <option value="研發替代役">研發替代役</option>
+          </select>
+        </div>
+
+        <div class="form-group"><label>需求人數</label><input type="text" id="job-count" class="reg-input"
+            placeholder="例如：1人">
+        </div>
+        <div class="form-group"><label>工作待遇</label><input type="text" id="job-salary" class="reg-input"
+            placeholder="例如：月薪 41,800 ~ 50,600元"></div>
+        <div class="form-group"><label>上班地點</label><input type="text" id="job-address" class="reg-input"
+            placeholder="例如：台北市中正區黎明里"></div>
+
+        <div class="form-group">
+          <label>管理責任</label>
+          <select id="job-manage" class="reg-input">
+            <option value="不需負擔管理責任">不需負擔管理責任</option>
+            <option value="需負擔管理責任">需負擔管理責任</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>出差外派</label>
+          <select id="job-travel" class="reg-input">
+            <option value="無需出差外派">無需出差外派</option>
+            <option value="需出差外派">需出差外派</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>上班時段與時間</label>
+          <div style="display: flex; gap: 10px;">
+            <select id="job-time-shift" class="reg-input" style="flex: 1;">
+              <option value="日班">日班</option>
+              <option value="晚班">晚班</option>
+              <option value="大夜班">大夜班</option>
+              <option value="假日班">假日班</option>
+            </select>
+            <input type="text" id="job-time-range" class="reg-input" style="flex: 1.5;" placeholder="例如：09:00~18:00">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>休假制度</label>
+          <select id="job-leave" class="reg-input">
+            <option value="依公司規定">依公司規定</option>
+            <option value="週休二日">週休二日</option>
+            <option value="排班制">排班制</option>
+            <option value="見紅就休">見紅就休</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>可上班日</label>
+          <select id="job-startdate" class="reg-input">
+            <option value="不限">不限</option>
+            <option value="隨時">隨時</option>
+            <option value="兩週內">兩週內</option>
+            <option value="一個月內">一個月內</option>
+            <option value="面議">面議</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-card glass-panel">
+      <h3 class="card-title">條件要求</h3>
+      <div class="form-grid-2">
+        <div class="form-group"><label>工作經歷</label><input type="text" id="job-exp" class="reg-input" placeholder="3年以上">
+        </div>
+        <div class="form-group">
+          <label>學歷要求</label>
+          <select id="job-edu" class="reg-input">
+            <option value="不拘">不拘</option>
+            <option value="高中職以下">高中職以下</option>
+            <option value="高中職">高中職</option>
+            <option value="專科">專科</option>
+            <option value="大學">大學</option>
+            <option value="碩士">碩士</option>
+            <option value="博士">博士</option>
+          </select>
+        </div>
+        <div class="form-group"><label>科系要求</label><input type="text" id="job-major" class="reg-input" placeholder="不拘">
+        </div>
+        <div class="form-group"><label>語文條件</label><input type="text" id="job-lang" class="reg-input"
+            placeholder="英文 -- 聽 /中等、說 /中等..."></div>
+      </div>
+
+      <div class="form-group" style="margin-top: 15px;">
+        <label>擅長工具</label>
+        <input type="text" id="job-tools" class="reg-input" placeholder="Excel、Outlook、PowerPoint、Word">
+      </div>
+      <div class="form-group">
+        <label>工作技能</label>
+        <input type="text" id="job-skills" class="reg-input" placeholder="文書處理/排版能力、行政事務處理...">
+      </div>
+      <div class="form-group">
+        <label>其他條件 (加分條件)</label>
+        <textarea id="job-req" class="reg-input" style="min-height: 100px;"
+          placeholder="✓ 個性開朗&#10;✓ 具備責任感..."></textarea>
+      </div>
+    </div>
+
+    <div class="form-card glass-panel">
+      <h3 class="card-title">福利制度</h3>
+      <div class="form-group">
+        <label>常見法定與福利項目 (可複選)</label>
+        <div class="welfare-tags-container">
+          <label class="welfare-tag"><input type="checkbox" value="停車位" class="welfare-cb"><span>停車位</span></label>
+          <label class="welfare-tag"><input type="checkbox" value="排班制" class="welfare-cb"><span>排班制</span></label>
+          <label class="welfare-tag"><input type="checkbox" value="勞保" class="welfare-cb"><span>勞保</span></label>
+          <label class="welfare-tag"><input type="checkbox" value="健保" class="welfare-cb"><span>健保</span></label>
+          <label class="welfare-tag"><input type="checkbox" value="陪產假" class="welfare-cb"><span>陪產假</span></label>
+          <label class="welfare-tag"><input type="checkbox" value="產假" class="welfare-cb"><span>產假</span></label>
+          <label class="welfare-tag"><input type="checkbox" value="特別休假" class="welfare-cb"><span>特別休假</span></label>
+          <label class="welfare-tag"><input type="checkbox" value="勞退提撥金" class="welfare-cb"><span>勞退提撥金</span></label>
+          <label class="welfare-tag"><input type="checkbox" value="年終獎金" class="welfare-cb"><span>年終獎金</span></label>
+          <label class="welfare-tag"><input type="checkbox" value="三節獎金" class="welfare-cb"><span>三節獎金</span></label>
+          <label class="welfare-tag"><input type="checkbox" value="零食櫃" class="welfare-cb"><span>零食櫃</span></label>
+          <label class="welfare-tag"><input type="checkbox" value="員工旅遊" class="welfare-cb"><span>員工旅遊</span></label>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-top: 15px;">
+        <label>其他福利說明 (自訂輸入)</label>
+        <textarea id="job-other" class="reg-input" style="min-height: 80px;"
+          placeholder="如有其他特殊福利或說明，請在此補充..."></textarea>
+      </div>
+    </div>
+    <div class="form-action-bar">
+      <button class="btn-secondary" style="padding: 15px 40px; font-size: 16px;" onclick="closeJobForm()">取消</button>
+      <button class="btn-green" style="padding: 15px 60px; font-size: 18px;" onclick="saveJob()">💾 儲存職缺</button>
+    </div>
+  </div>
+
+  <div id="applicant-list-overlay" class="modal-overlay">
+    <div class="register-modal resume-form-modal" style="max-width: 550px;">
+      <h2 style="color: var(--primary-green); margin-bottom: 20px;">應徵者狀態清單</h2>
+
+      <div id="applicant-list-content" class="applicant-list-wrapper"></div>
+
+      <button class="btn-green" style="width: 100%; margin-top: 25px; padding: 15px; border-radius: 10px;"
+        onclick="closeApplicantListModal()">關閉清單</button>
+    </div>
+  </div>
+
+  <script src="0js/0company.js" defer></script>
+</body>
+
+</html>
