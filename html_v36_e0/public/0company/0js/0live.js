@@ -165,6 +165,9 @@ function setupWebSocket() {
 
         // 🌟 接收廣播來的 AI 聲音，並觸發戰情室的影片動嘴巴！
         if (data.serverContent?.modelTurn?.parts) {
+            // ⭐ 跟團面一樣，只看手動暫停按鈕的狀態
+            if (typeof isAIPausedByHR !== 'undefined' && isAIPausedByHR) return;
+
             let roleStr = data.ai_role || 'MANAGER';
             let targetId = roleStr.includes('HR') ? 'aiModel_HR' : 'aiModel_Tech';
 
@@ -173,6 +176,10 @@ function setupWebSocket() {
                     playAudio(part.inlineData.data, targetId); 
                 }
             }
+        }
+
+        if (data.serverContent?.interrupted || data.customType === 'kill_ai_audio') {
+            if (typeof stopAllAudio === 'function') stopAllAudio();
         }
     };
 }
@@ -209,8 +216,6 @@ async function startHumanInterview() {
 
         peerConnection.ontrack = (event) => {
             document.getElementById('remoteUserVideo').srcObject = event.streams[0];
-            // 🌟 啟動聲控雷達！
-            startAutoVoiceDetection(localStream, event.streams[0]);
         };
 
         peerConnection.onicecandidate = (event) => {
@@ -363,115 +368,6 @@ function initGlobalAnimationLoop() {
         requestAnimationFrame(runGlobalLoop);
     };
     requestAnimationFrame(runGlobalLoop);
-}
-// ==========================================
-// 🌟 黑科技：全自動聲控雷達 (雙向監聽 VAD)
-// ==========================================
-let autoPauseActive = false;
-let silenceTimer = null;
-let audioContextVAD = null;
-let hrAnalyser = null;
-let userAnalyser = null;
-let hrDataArray = null;
-let userDataArray = null;
-
-// 🔒 防護一：你抓到的 Bug，新增全域鎖頭阻擋 ontrack 重複觸發！
-let isVadStarted = false; 
-
-function startAutoVoiceDetection(localStream, remoteStream) {
-    if (isVadStarted) {
-        console.log("🛡️ [VAD] 攔截重複觸發：雷達已經在運作中！");
-        return; 
-    }
-    isVadStarted = true;
-
-    // 🔌 防護二：我搞砸的 Bug！絕對不能 new 新的引擎，直接共用主電源！
-    if (!window.audioContext) {
-        console.error("❌ 找不到主音效引擎，雷達無法啟動！");
-        isVadStarted = false; // 解開鎖頭以防後續重試
-        return;
-    }
-    audioContextVAD = window.audioContext; // 🌟 關鍵修正：直接拿來用
-
-    try {
-        // 1. 監聽 HR 的麥克風
-        const hrSource = audioContextVAD.createMediaStreamSource(localStream);
-        hrAnalyser = audioContextVAD.createAnalyser();
-        hrAnalyser.fftSize = 256;
-        hrSource.connect(hrAnalyser);
-        hrDataArray = new Uint8Array(hrAnalyser.frequencyBinCount);
-
-        // 2. 監聽應徵者的聲音
-        const userSource = audioContextVAD.createMediaStreamSource(remoteStream);
-        userAnalyser = audioContextVAD.createAnalyser();
-        userAnalyser.fftSize = 256;
-        userSource.connect(userAnalyser);
-        userDataArray = new Uint8Array(userAnalyser.frequencyBinCount);
-
-        checkVolumeLoop();
-        console.log("📡 [VAD] 全自動聲控雷達已成功接上主電源並啟動！");
-    } catch (e) {
-        console.error("VAD 啟動失敗:", e);
-        isVadStarted = false; 
-    }
-}
-
-function checkVolumeLoop() {
-    requestAnimationFrame(checkVolumeLoop);
-
-    hrAnalyser.getByteFrequencyData(hrDataArray);
-    userAnalyser.getByteFrequencyData(userDataArray);
-
-    // 計算 HR 與應徵者的即時音量
-    let hrSum = 0; for(let i=0; i<hrDataArray.length; i++) hrSum += hrDataArray[i];
-    let hrAvg = hrSum / hrDataArray.length;
-
-    let userSum = 0; for(let i=0; i<userDataArray.length; i++) userSum += userDataArray[i];
-    let userAvg = userSum / userDataArray.length;
-
-    const THRESHOLD = 25; // 🌟 敏感度 (數字越小越敏感，覺得難觸發可以改小)
-
-    if (hrAvg > THRESHOLD) {
-        // HR 一講話，立刻砸停 AI！
-        if (!autoPauseActive) {
-            autoPauseActive = true;
-            console.log("🎤 [VAD] 偵測到 HR 講話，自動暫停 AI！");
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'pause_ai', sessionId: targetSessionId }));
-            }
-            const title = document.getElementById('current-room-title');
-            if(title) {
-                title.innerText = "⚠️ 真人對話中 (AI 已自動暫停)";
-                title.style.color = "#e67e22";
-            }
-        }
-        resetSilenceTimer(); // 只要有講話，就重新計時
-    } else if (userAvg > THRESHOLD) {
-        // 應徵者講話時，重置計時器 (保護應徵者講話不被 AI 打斷)
-        if (autoPauseActive) {
-            resetSilenceTimer();
-        }
-    }
-}
-
-function resetSilenceTimer() {
-    if (silenceTimer) clearTimeout(silenceTimer);
-    
-    // 設定「安靜幾秒後」AI 自動接手 (預設 4 秒)
-    silenceTimer = setTimeout(() => {
-        if (autoPauseActive) {
-            autoPauseActive = false;
-            console.log("🤫 [VAD] 雙方安靜 4 秒，AI 自動恢復！");
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'resume_ai', sessionId: targetSessionId }));
-            }
-            const title = document.getElementById('current-room-title');
-            if(title) {
-                title.innerText = `目前潛入房間 ID：${targetSessionId}`;
-                title.style.color = "var(--text-main)";
-            }
-        }
-    }, 2000); // 4000毫秒 = 4秒
 }
 
 // ==========================================
