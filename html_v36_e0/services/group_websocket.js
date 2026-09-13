@@ -714,7 +714,7 @@ function setupGroupWebSocket(options) {
                             break;
                         }
                     }
-
+                    
                     if (
                         mentionedCandidate &&
                         roomState.currentCandidateResumeId !== mentionedCandidate.resumeId
@@ -820,8 +820,7 @@ function setupGroupWebSocket(options) {
                                     normalizedHandoverText.includes('交給') &&
                                     normalizedHandoverText.includes('主管');
 
-                                if (hasHrHandover) {
-                                    console.log(
+                                if (hasHrHandover) {                                    console.log(
                                         "🔄 [權限切換] HR 已完整說出固定交接台詞 → 部門主管"
                                     );
 

@@ -251,7 +251,7 @@ async function playAudio(base64Data, targetId) {
 
         source.start(nextPlayTime);
         nextPlayTime += audioBuffer.duration;
-    } catch (err) {
+        } catch (err) {
         console.error("❌ [音訊系統] playAudio 發生錯誤:", err);
     }
 }
@@ -526,7 +526,7 @@ async function startGroupInterview() {
                 window.currentAiRole =
                     data.ai_role ||
                     window.currentAiRole ||
-                    '技術主管';
+                    '技術主管';                
                 let roleStr = window.currentAiRole.toUpperCase();
                 let targetId = roleStr.includes('HR') ? 'aiModel_HR' : 'aiModel_Tech';
 
@@ -544,8 +544,7 @@ async function startGroupInterview() {
                 console.log(
                     "⚠️ 收到 Gemini interrupted，但保留目前 AI 音訊播放 queue"
                 );
-            }
-        };
+            }        };
 
         // 麥克風音訊處理與 PCM 轉換傳輸
         audioAnalyser = audioContext.createAnalyser();

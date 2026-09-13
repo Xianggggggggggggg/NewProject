@@ -162,6 +162,24 @@ function setupWebSocket() {
             appendTranscript('user', data.text, null, data.candidateName);
         }
         if (data.customType === 'ai_transcript_final') appendTranscript('ai', data.text, data.ai_role || 'MANAGER');
+        
+        if (data.serverContent?.modelTurn?.parts) {
+            // 如果你按了暫停，就不要把聲音播出來
+            if (typeof isAIPausedByHR !== 'undefined' && isAIPausedByHR) return;
+
+            let roleStr = data.ai_role || 'MANAGER';
+            let targetId = roleStr.includes('HR') ? 'aiModel_HR' : 'aiModel_Tech';
+
+            for (const part of data.serverContent.modelTurn.parts) {
+                if (part.inlineData && part.inlineData.data) {
+                    playAudio(part.inlineData.data, targetId); 
+                }
+            }
+        }
+
+        if (data.serverContent?.interrupted || data.customType === 'kill_ai_audio') {
+            if (typeof stopAllAudio === 'function') stopAllAudio();
+        }
 
         if (data.type === 'user_joined_group') {
             console.log("👥 偵測到新應徵者加入！HR 重新發送座標...");
@@ -387,3 +405,96 @@ function toggleAIPause() {
         console.log("▶️ 已發送恢復 AI 指令");
     }
 }
+// ==========================================
+// 🌟 核心修復 2：AI 動態對嘴與音效引擎 (戰情室上帝視角版)
+// ==========================================
+function stopAllAudio() {
+    activeSources.forEach(source => { try { source.stop(); } catch (e) { } });
+    activeSources = [];
+    window.audioAnimationQueue = [];
+    if (window.audioContext) nextPlayTime = window.audioContext.currentTime;
+
+    const talkTech = document.getElementById('talkVideo_Tech');
+    const talkHR = document.getElementById('talkVideo_HR');
+    if (talkTech) talkTech.classList.remove('active');
+    if (talkHR) talkHR.classList.remove('active');
+}
+
+async function playAudio(base64Data, targetId) {
+    try {
+        if (!targetId) targetId = 'aiModel_Tech';
+
+        if (!window.audioContext) {
+            window.audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        }
+        if (window.audioContext.state === 'suspended') await window.audioContext.resume();
+
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+        const int16Array = new Int16Array(bytes.buffer);
+        
+        const audioBuffer = window.audioContext.createBuffer(1, int16Array.length, 24000);
+        audioBuffer.getChannelData(0).set(Array.from(int16Array).map(v => v / 32768.0));
+
+        const source = window.audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(window.audioContext.destination);
+        activeSources.push(source);
+
+        const now = window.audioContext.currentTime;
+        if (nextPlayTime < now) nextPlayTime = now;
+
+        window.audioAnimationQueue.push({
+            targetId: targetId,
+            startTime: nextPlayTime,
+            endTime: nextPlayTime + audioBuffer.duration
+        });
+
+        source.start(nextPlayTime);
+        nextPlayTime += audioBuffer.duration;
+    } catch (err) {
+        console.error("❌ playAudio 發生錯誤:", err);
+    }
+}
+
+function initGlobalAnimationLoop() {
+    const runGlobalLoop = () => {
+        const ctx = window.audioContext || null;
+        const now = ctx ? ctx.currentTime : 0;
+        
+        const activeTurn = window.audioAnimationQueue.find(item => now >= item.startTime && now <= item.endTime);
+        const activeTargetId = activeTurn ? activeTurn.targetId : null;
+
+        window.audioAnimationQueue = window.audioAnimationQueue.filter(item => now <= item.endTime);
+
+        const talkVideoTech = document.getElementById('talkVideo_Tech');
+        const talkVideoHR = document.getElementById('talkVideo_HR');
+
+        if (talkVideoTech && talkVideoHR) {
+            if (activeTargetId === 'aiModel_Tech') {
+                if (!talkVideoTech.classList.contains('active')) {
+                    talkVideoTech.currentTime = 0; 
+                    talkVideoTech.play().catch(e => {});
+                    talkVideoTech.classList.add('active'); 
+                }
+                talkVideoHR.classList.remove('active'); 
+            } else if (activeTargetId === 'aiModel_HR') {
+                if (!talkVideoHR.classList.contains('active')) {
+                    talkVideoHR.currentTime = 0;
+                    talkVideoHR.play().catch(e => {});
+                    talkVideoHR.classList.add('active'); 
+                }
+                talkVideoTech.classList.remove('active'); 
+            } else {
+                talkVideoTech.classList.remove('active');
+                talkVideoHR.classList.remove('active');
+            }
+        }
+        requestAnimationFrame(runGlobalLoop);
+    };
+    requestAnimationFrame(runGlobalLoop);
+}
+
+// 啟動戰情室動畫迴圈
+initGlobalAnimationLoop();
