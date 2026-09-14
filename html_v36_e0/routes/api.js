@@ -315,14 +315,40 @@ router.post('/interview-sessions', async (req, res) => {
 });
 
 router.post('/interview-result', async (req, res) => {
-    const { session_id, finalEmotion, finalFeedback, finalConfidenceScore, analysisData } = req.body;
+    // 🌟 1. 確保把 resume_id 也解構出來
+    const { session_id, resume_id, finalEmotion, finalFeedback, finalConfidenceScore, analysisData } = req.body;
+
     if (!session_id) return res.status(400).json({ error: '缺少 session_id' });
+
     try {
-        const { error: updateError } = await supabase.from('interview_sessions').update({ status: '已完成', end_time: new Date().toISOString() }).eq('session_id', session_id);
+        let targetSessionId = session_id;
+
+        // 🌟 2. 核心邏輯：如果是團體面試（有傳 resume_id），找出他專屬的真實 session_id
+        if (resume_id) {
+            const { data: sessionData } = await supabase
+                .from('interview_sessions')
+                .select('session_id')
+                .eq('resume_id', resume_id)
+                // 同時比對 session_id 或 room_id，確保單人/多人模式都能命中
+                .or(`session_id.eq.\({session_id},room_id.eq.\){session_id}`)
+                .single();
+
+            if (sessionData) {
+                targetSessionId = sessionData.session_id;
+            }
+        }
+
+        // 🌟 3. 使用專屬的 targetSessionId 更新面試狀態
+        const { error: updateError } = await supabase
+            .from('interview_sessions')
+            .update({ status: '已完成', end_time: new Date().toISOString() })
+            .eq('session_id', targetSessionId);
+
         if (updateError) throw updateError;
 
+        // 🌟 4. 使用專屬的 targetSessionId 寫入表情與評分報告
         const { error: reportError } = await supabase.from('evaluation_reports').upsert({
-            session_id,
+            session_id: targetSessionId,
             confidence_score: finalConfidenceScore || 0,
             ai_feedback: finalFeedback || '',
             happy_ratio: analysisData?.emotion_joy || 0,
@@ -331,10 +357,12 @@ router.post('/interview-result', async (req, res) => {
             blink_count: analysisData?.blink_count || 0,
             created_at: new Date().toISOString()
         }, { onConflict: 'session_id' });
+
         if (reportError) throw reportError;
 
         res.json({ success: true, message: '面試結果已保存' });
     } catch (err) {
+        console.error('寫入成績失敗:', err.message);
         res.status(500).json({ error: err.message });
     }
 });
