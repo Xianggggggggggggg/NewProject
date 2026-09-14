@@ -166,7 +166,7 @@ function setupGroupWebSocket(options) {
             1. 負責團體面試開場，熱情歡迎大家。
             2. 🌟 **「所有人回答同一題」輪流機制**：
                - 每次你提出一個問題時，**必須依序指定名單中的人「一個一個回答」同一道題目**。
-               - 例如：先問「請第 1 位 [${candidatesList[0]?.name}] 回答這個問題...」，等他回答完後，再問「接下來請第 2 位 [${candidatesList[1]?.name || ''}] 針對同一題發表看法」，以此類推，直到名單內所有人都在這道題發言完畢。
+               - 例如：先問「請第 1 位 [${candidatesList[0]?.name}] 回答這個問題...」，等他回答完後，再問「接下來請第 2 位 [${candidatesList[1]?.name || ''}] 針對同一題發表看法」，以此類推，直到【名單內所有人】都在這道題發言完畢。
                - 當所有人都在這一題回答完後，你才能提出「下一個新問題」，並再次從第 1 位開始依序點名！
             3. **禁止亂跳與搶答**：絕對不允許開放自由搶答，也絕對不能跳號。
             4. 每次發言【只能問一個問題】且【只能指定一個人】。
@@ -838,26 +838,20 @@ function setupGroupWebSocket(options) {
 
                             // ==========================================
                             // 🔄 HR → 部門主管
-                            // ⭐ 必須「後端已指定交接」+「HR 真正說出固定台詞」
                             // ==========================================
                             if (
                                 role === 'HR' &&
                                 roomState.currentInterviewer === 'HR'
                             ) {
-                                // ⭐ 去掉標點，避免辨識差異
-                                const normalizedHandoverText =
-                                    finalSentence.replace(/[，。！？、,.!?]/g, '');
+                                const normalizedHandoverText = finalSentence.replace(/[，。！？、,.!?]/g, '');
 
-                                // ⭐ HR 只要真的說到「交給」＋「主管」
-                                // 就直接正式交接，不再二次檢查題數或 wrapping 狀態
+                                // 🌟 放寬交接判定：只要有「交給」或「交接」，且提到「主管」就算數
                                 const hasHrHandover =
-                                    normalizedHandoverText.includes('交給') &&
+                                    (normalizedHandoverText.includes('交給') || normalizedHandoverText.includes('交接')) &&
                                     normalizedHandoverText.includes('主管');
 
-                                if (hasHrHandover) {                                    console.log(
-                                        "🔄 [權限切換] HR 已完整說出固定交接台詞 → 部門主管"
-                                    );
-
+                                if (hasHrHandover) {
+                                    console.log("🔄 [權限切換] HR 已完整說出固定交接台詞 → 部門主管");
                                     // ⭐ 立刻鎖住 HR
                                     roomState.currentInterviewer = 'HANDOVER';
 
@@ -1013,7 +1007,6 @@ function setupGroupWebSocket(options) {
 
                             // ==========================================
                             // 🔄 部門主管 → HR
-                            // ⭐ 必須「後端已指定交接」+「主管真正說出固定台詞」
                             // ==========================================
                             if (
                                 role === 'MANAGER' &&
@@ -1021,15 +1014,15 @@ function setupGroupWebSocket(options) {
                                 roomState.pendingHandover === 'MANAGER_TO_HR' &&
                                 roomState.currentInterviewer === 'MANAGER'
                             ) {
-                                const normalizedHandoverText =
-                                    finalSentence.replace(/[，。！？、,.!?]/g, '');
+                                const normalizedHandoverText = finalSentence.replace(/[，。！？、,.!?]/g, '');
 
-                                if (
-                                    normalizedHandoverText.includes(MANAGER_HANDOVER_MARKER)
-                                ) {
-                                    console.log(
-                                        "🔄 [權限切換] 部門主管已完整說出固定交接台詞 → HR"
-                                    );
+                                // 🌟 放寬交接判定：只要有「交還」、「交給」或「交接」，且提到「人資」就算數
+                                const hasManagerHandover =
+                                    (normalizedHandoverText.includes('交還') || normalizedHandoverText.includes('交給') || normalizedHandoverText.includes('交接')) &&
+                                    normalizedHandoverText.includes('人資');
+
+                                if (hasManagerHandover) {
+                                    console.log("🔄 [權限切換] 部門主管已完整說出固定交接台詞 → HR");
 
                                     roomState.currentInterviewer = 'HANDOVER';
 

@@ -852,6 +852,7 @@ async function uploadInterviewResult(sessionId, analysisData) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 session_id: sessionId,
+                resume_id: RESUME_ID, 
                 finalEmotion,
                 finalFeedback,
                 finalConfidenceScore,
