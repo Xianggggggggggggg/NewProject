@@ -74,7 +74,11 @@ function setupGroupWebSocket(options) {
                     })
                     .join('\n\n');
 
-                if (!fullConversationLog) return;
+                if (!fullConversationLog) {
+                    console.log(`⚠️ [多人面試] 沒有可保存的對話內容，session: ${currentSessionId}`);
+                    activeRooms.delete(currentSessionId);
+                    return;
+                }
 
                 const { error: insertErr } = await supabase.from('transcripts')
                     .insert([{ session_id: currentSessionId, speaker: 'FULL_CONVERSATION', text_content: fullConversationLog, created_at: new Date().toISOString() }]);
@@ -1013,6 +1017,15 @@ function setupGroupWebSocket(options) {
                         }
                     });
 
+                    return;
+                }
+
+                if (parsedMsg.type === 'force_end_interview') {
+                    const sessionId = parsedMsg.sessionId || currentSessionId;
+                    if (sessionId) {
+                        currentSessionId = sessionId;
+                        await saveToDatabase();
+                    }
                     return;
                 }
 
