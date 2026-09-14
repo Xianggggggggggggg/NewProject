@@ -497,13 +497,12 @@ router.get('/manage-sessions', async (req, res) => {
                 interview_sessions (
                     applicants ( name )
                 )
-            `) // 🌟 修改：已經從 select 中移除了 current_count
+            `)
             .order('start_time', { ascending: true });
 
         if (error) throw error;
 
-        // 🌟 新增：利用撈出來的應徵者名單陣列長度，動態補上 current_count 給前端
-        const formattedData = data.map(room => ({
+        const formattedData = (data || []).map(room => ({
             ...room,
             current_count: room.interview_sessions ? room.interview_sessions.length : 0
         }));
@@ -567,12 +566,12 @@ router.post('/group-rooms/:roomId/report', async (req, res) => {
     try {
         const { roomId } = req.params;
 
-        // 1. 從 interview_sessions 找出這個房間裡的所有應徵者名單
         const { data: sessions, error: sessionsErr } = await supabaseAdmin
             .from('interview_sessions')
             .select(`
                 session_id,
-                applicants ( name )
+                applicants ( name ),
+                evaluation_reports ( confidence_score, happy_ratio, neutral_ratio, sad_ratio, blink_count )
             `)
             .eq('room_id', roomId);
 
@@ -581,11 +580,25 @@ router.post('/group-rooms/:roomId/report', async (req, res) => {
             return res.status(400).json({ success: false, error: '此團面房間尚無應徵者參與。' });
         }
 
-        const candidateNames = sessions.map(s => s.applicants?.name).filter(Boolean);
+        const candidates = sessions.map(s => {
+            let emo = s.evaluation_reports;
+            if (Array.isArray(emo)) emo = emo[0];
+            return {
+                name: s.applicants?.name || '未知應徵者',
+                session_id: s.session_id,
+                emotion: emo ? {
+                    confidence_score: emo.confidence_score ?? null,
+                    happy_ratio: emo.happy_ratio ?? null,
+                    neutral_ratio: emo.neutral_ratio ?? null,
+                    sad_ratio: emo.sad_ratio ?? null,
+                    blink_count: emo.blink_count ?? null
+                } : null
+            };
+        });
+
+        const candidateNames = candidates.map(c => c.name).filter(Boolean);
         const sessionIds = sessions.map(s => s.session_id);
 
-        // 2. 抓取這場團體面試的「共同逐字稿」
-        // 因為團面時大家的對話都會寫入 transcripts，我們只要撈取該房間內最新的一份完整紀錄即可
         const { data: transcripts, error: transErr } = await supabaseAdmin
             .from('transcripts')
             .select('text_content')
@@ -600,28 +613,104 @@ router.post('/group-rooms/:roomId/report', async (req, res) => {
 
         const groupTranscript = transcripts[0].text_content;
 
-        // 3. 組合全新 Prompt，直接餵給 OpenAI 逐字稿，要求它一次性評估所有人
-        const prompt = `
-你是一位資深招募顧問。這是一場「多人團體面試」的完整對話逐字稿。
-參與這場面試的應徵者有：${candidateNames.join('、')}。
+        const perCandidateTranscript = splitTranscriptByCandidate(groupTranscript, candidateNames);
+        candidates.forEach(c => {
+            c.transcript_snippet = (perCandidateTranscript[c.name] || []).join('\n\n')
+                || '（此應徵者在逐字稿中沒有偵測到發言紀錄）';
+        });
 
-請直接閱讀以下對話紀錄，觀察他們在面試中的互動、回答邏輯與專業度，並進行橫向對比。
-請「只回傳 JSON」，不要有任何 Markdown 符號 (如 \`\`\`json)，格式如下：
+        const prompt = `
+你是一位資深招募顧問，正在針對一場「多人團體面試」進行逐一評分與橫向比較。
+參與者：${candidateNames.join('、')}。
+
+以下已針對「每一位」應徵者，從完整逐字稿中抽取出僅屬於他/她自己的提問與回答片段：
+
+${candidates.map(c => `\n【${c.name} 的專屬對話片段】\n${c.transcript_snippet}\n`).join('\n')}
+
+請針對每一位應徵者，依下列四個維度個別評分（0-100分），並「必須」寫出具體評分依據（引用他實際回答的內容或行為，不能只給空泛形容詞）：
+- professionalism（專業能力）
+- communication（溝通表達）
+- teamwork（團隊合作／互動表現）
+- logic（邏輯思維）
+
+overall_score 為四項的加權平均（專業40%、溝通25%、團隊20%、邏輯15%，四捨五入至整數）。
+
+另外，請為每位應徵者補充「qa」陣列，代表逐題問答評估：
+- 每一個 qa item 都要對應一個剛剛問答中的關鍵問題
+- question：問題內容
+- score：0-10 的整數分數
+- feedback：對該題的具體回饋與建議
+- 若當題無法明確辨識，至少補上一題最重要問題的評語，不能空白
+
+請「只回傳 JSON」，不要有任何 Markdown 符號，格式如下：
 {
-  "room_overview": "針對這場團體面試的整體氣氛與候選人總體素質的簡短總評（80字內）",
-  "ranking": [
-    { "name": "姓名", "overall_score": 數字(0-100), "reason": "在此場團面中的相對優勢、發言質量或具體表現" }
+  "candidates": [
+    {
+      "name": "姓名",
+      "overall_score": 數字,
+      "score_breakdown": {
+        "professionalism": { "score": 數字, "reason": "具體依據" },
+        "communication": { "score": 數字, "reason": "具體依據" },
+        "teamwork": { "score": 數字, "reason": "具體依據" },
+        "logic": { "score": 數字, "reason": "具體依據" }
+      },
+      "highlights": ["亮點1","亮點2"],
+      "concerns": ["待改進1"],
+      "qa": [{ "question": "問題內容", "score": 7, "feedback": "具體建議" }]
+    }
   ],
-  "best_communicator": "本場團面中溝通表達或團隊互動最佳的人選姓名與理由",
-  "standout_performer": "本場團面中技術或專業回答最突出的人選姓名與理由"
+  "best_communicator": "本場團面中溝通表達最佳的人選姓名與理由",
+  "standout_performer": "本場團面中專業表現最突出的人選姓名與理由",
+  "hr_recommendation": "整體招募建議"
 }
 
-【團體面試對話逐字稿】：
+【完整團體面試對話逐字稿（供比對上下文使用）】：
 ${groupTranscript}
 `;
 
-        // 4. 呼叫 OpenAI (即時生成，完全不依賴個人報告)
         const reportJson = await callOpenAIForJson(prompt);
+
+        console.log('🔍 [團面報告] 使用資料來源: AI 回傳', JSON.stringify(reportJson, null, 2));
+
+        if (!Array.isArray(reportJson.candidates) || reportJson.candidates.length === 0) {
+            const rankingFallback = Array.isArray(reportJson.ranking) ? reportJson.ranking : [];
+            if (rankingFallback.length > 0) {
+                reportJson.candidates = rankingFallback.map((item, idx) => ({
+                    name: item.name || `候選人 ${idx + 1}`,
+                    overall_score: Number(item.overall_score) || 0,
+                    score_breakdown: {
+                        professionalism: { score: 0, reason: '未提供具體評分依據' },
+                        communication: { score: 0, reason: '未提供具體評分依據' },
+                        teamwork: { score: 0, reason: '未提供具體評分依據' },
+                        logic: { score: 0, reason: '未提供具體評分依據' }
+                    },
+                    highlights: [item.reason || '無亮點描述'],
+                    concerns: ['未提供明確疑慮'],
+                    qa: [],
+                    transcript_snippet: '',
+                    emotion: null
+                }));
+            } else {
+                console.warn('⚠️ [團面報告] candidates 陣列為空，回傳的 keys 為:', Object.keys(reportJson));
+                return res.status(500).json({
+                    success: false,
+                    error: 'AI 回傳的資料格式不符（缺少 candidates），請重新整理再試一次。若持續發生請查看後端終端機的 log。'
+                });
+            }
+        }
+
+        reportJson.candidates = (reportJson.candidates || []).map(c => {
+            const matched = candidates.find(x => x.name === c.name) || {};
+            return {
+                ...c,
+                qa: Array.isArray(c.qa) ? c.qa : [],
+                transcript_snippet: matched.transcript_snippet || '',
+                emotion: matched.emotion || null
+            };
+        });
+        reportJson.ranking = [...reportJson.candidates]
+            .sort((a, b) => (b.overall_score || 0) - (a.overall_score || 0))
+            .map(c => ({ name: c.name, overall_score: c.overall_score, reason: c.highlights?.[0] || '' }));
 
         res.json({ success: true, report: reportJson, applicant_count: candidateNames.length });
 
@@ -630,5 +719,63 @@ ${groupTranscript}
         res.status(500).json({ success: false, error: err.message });
     }
 });
+
+function splitTranscriptByCandidate(fullText, candidateNames) {
+    const lines = (fullText || '')
+        .split(/\n\n|\r\n\r\n/)
+        .map(l => l.trim())
+        .filter(Boolean);
+
+    const result = {};
+    candidateNames.forEach(n => result[n] = []);
+
+    let currentQuestionBlock = [];
+    let lastSpeakerType = '';
+    let candidatesWhoAnsweredThisQuestion = new Set();
+
+    const buildCandidateKey = (speaker) => {
+        const normalized = (speaker || '').replace(/[：:]/g, '').trim();
+        const exactMatch = candidateNames.find(name => name && (name === normalized || normalized.includes(name) || name.includes(normalized)));
+        if (exactMatch) return exactMatch;
+        if (/(應徵者|候選人|applicant|candidate)/i.test(normalized)) return candidateNames[0] || '應徵者';
+        return null;
+    };
+
+    for (const rawLine of lines) {
+        const sepIdx = rawLine.indexOf('：');
+        const altSepIdx = rawLine.indexOf(':');
+        const splitAt = sepIdx >= 0 ? sepIdx : altSepIdx;
+        if (splitAt === -1) continue;
+
+        const speaker = rawLine.substring(0, splitAt).trim();
+        const line = rawLine.trim();
+        const isInterviewer = /(面試官|HR|主管|interviewer|manager|系統)/i.test(speaker);
+        const targetCandidateName = buildCandidateKey(speaker);
+
+        if (isInterviewer) {
+            if (lastSpeakerType !== 'interviewer') {
+                currentQuestionBlock = [];
+                candidatesWhoAnsweredThisQuestion.clear();
+            }
+            currentQuestionBlock.push(line);
+            lastSpeakerType = 'interviewer';
+        }
+        else if (targetCandidateName) {
+            if (!candidatesWhoAnsweredThisQuestion.has(targetCandidateName) && currentQuestionBlock.length > 0) {
+                result[targetCandidateName] = result[targetCandidateName] || [];
+                result[targetCandidateName].push(...currentQuestionBlock);
+                candidatesWhoAnsweredThisQuestion.add(targetCandidateName);
+            }
+            result[targetCandidateName] = result[targetCandidateName] || [];
+            result[targetCandidateName].push(line);
+            lastSpeakerType = 'candidate';
+        }
+        else {
+            lastSpeakerType = 'other';
+        }
+    }
+
+    return result;
+}
 
 module.exports = router;

@@ -55,34 +55,61 @@ function setupGroupWebSocket(options) {
             try {
                 if (!currentSessionId) return;
                 const room = activeRooms.get(currentSessionId);
-                if (!room || !room.transcript) return;
 
-                const { error: updateErr } = await supabase.from('interview_sessions')
-                    .update({ status: '已結束', end_time: new Date().toISOString() })
-                    .eq('session_id', currentSessionId);
-                if (updateErr) throw updateErr;
+                // 確保真的有對話紀錄才存，避免存入空資料
+                if (!room || !room.transcript || room.transcript.length === 0) return;
 
+                // 1. 組裝完整對話紀錄
                 const fullConversationLog = room.transcript
                     .filter(item => item.type === "speech")
                     .map(item => {
-                        let speakerName = '應徵者';
+                        let speakerName = '系統';
                         if (item.role === 'ai_HR') speakerName = 'HR 面試官';
-                        if (item.role === 'ai_MANAGER') speakerName = '部門主管';
+                        if (item.role === 'ai_MANAGER') speakerName = '專業主管';
                         if (item.role === 'human_HR') speakerName = '真人 HR';
                         if (item.role?.startsWith('candidate:')) speakerName = item.role.replace('candidate:', '');
                         return `${speakerName}：${item.content}`;
                     })
                     .join('\n\n');
 
-                if (!fullConversationLog) return;
+                if (!fullConversationLog.trim()) return;
 
-                const { error: insertErr } = await supabase.from('transcripts')
-                    .insert([{ session_id: currentSessionId, speaker: 'FULL_CONVERSATION', text_content: fullConversationLog, created_at: new Date().toISOString() }]);
-                if (insertErr) throw insertErr;
+                // 2. 🌟 關鍵修復：解決 ID 錯亂！
+                // 聰明地找出這個房間內「所有應徵者」的專屬 session_id
+                const { data: sessions, error: fetchErr } = await supabase
+                    .from('interview_sessions')
+                    .select('session_id')
+                    .or(`session_id.eq.${currentSessionId},room_id.eq.${currentSessionId}`);
 
-                console.log(`✅ 多人面試已完美存檔 (Session: ${currentSessionId})`);
+                if (fetchErr) throw fetchErr;
+
+                if (sessions && sessions.length > 0) {
+                    // 3. 為同房間的「每一位應徵者」都寫入一份這場團面的逐字稿
+                    const inserts = sessions.map(s => ({
+                        session_id: s.session_id,
+                        speaker: 'FULL_CONVERSATION',
+                        text_content: fullConversationLog,
+                        created_at: new Date().toISOString()
+                    }));
+
+                    const { error: insertErr } = await supabase.from('transcripts').insert(inserts);
+                    if (insertErr) throw insertErr;
+
+                    // 4. 同步更新這批人的面試狀態為「已完成」
+                    const sessionIds = sessions.map(s => s.session_id);
+                    await supabase.from('interview_sessions')
+                        .update({ status: '已完成', end_time: new Date().toISOString() })
+                        .in('session_id', sessionIds);
+
+                    console.log(`✅ 成功！已將團面逐字稿存入 ${sessionIds.length} 位應徵者的紀錄中！`);
+                }
+
+                // 清除記憶體，避免重複寫入
                 activeRooms.delete(currentSessionId);
-            } catch (err) { console.error('❌ 寫入資料庫失敗:', err.message); }
+
+            } catch (err) {
+                console.error('❌ 儲存團面逐字稿失敗:', err.message);
+            }
         };
 
         const startGroupGeminiConnections = (roomState, candidatesInfoText, candidatesList, position, interview_type, jobDetailsText, companyContext) => {
@@ -759,6 +786,13 @@ function setupGroupWebSocket(options) {
                                 roomState.lastManagerFinalSentence = finalSentence;
                             }
 
+                            addLog(
+                                roomState.sessionId,
+                                role === 'HR' ? 'ai_HR' : 'ai_MANAGER',
+                                finalSentence,
+                                'speech'
+                            );
+
                             const aiMsg = JSON.stringify({
                                 customType: 'ai_transcript_final',
                                 ai_role: role,
@@ -1185,6 +1219,9 @@ function setupGroupWebSocket(options) {
                     roomState.aiPhaseFinished = true;
                     roomState.isAiSpeaking = false;
                     roomState.currentInterviewer = 'WAITING_HUMAN';
+
+                    // 🌟 新增這行：AI 面試一結束，立刻強制把對話存進資料庫！
+                    saveToDatabase();
 
                     // ⭐ 清除 AI 發言權
                     // 後面任何應徵者講話都不再送進 Gemini

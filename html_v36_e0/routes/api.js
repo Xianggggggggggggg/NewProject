@@ -325,6 +325,10 @@ router.post('/interview-result', async (req, res) => {
             session_id,
             confidence_score: finalConfidenceScore || 0,
             ai_feedback: finalFeedback || '',
+            happy_ratio: analysisData?.emotion_joy || 0,
+            neutral_ratio: analysisData?.emotion_neutral || 0,
+            sad_ratio: analysisData?.emotion_anxiety || 0,
+            blink_count: analysisData?.blink_count || 0,
             created_at: new Date().toISOString()
         }, { onConflict: 'session_id' });
         if (reportError) throw reportError;

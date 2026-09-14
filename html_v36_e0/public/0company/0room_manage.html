@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="../user/css/style.css">
     <link rel="stylesheet" href="0css/0company.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 
     <style>
         /* 🌟 職缺群組標題 */
@@ -375,16 +376,12 @@
             }
         }
 
-        function generateGroupReport(roomId) {
-            alert(`📊 準備查看房間 ${roomId} 的團面報告`);
-            // TODO: 這裡可以改成實際導向報告頁面或開啟報告彈窗
-        }
     </script>
     <!-- ========================================== -->
     <!-- 👥 團體面試綜合對比報告 Modal (新增外掛) -->
     <!-- ========================================== -->
     <div id="group-report-overlay" class="modal-overlay" style="display: none; z-index: 9999;">
-        <div class="register-modal resume-form-modal custom-modal-size" style="width: 800px; max-width: 90%;">
+        <div class="register-modal resume-form-modal custom-modal-size">
             <button class="modal-close-btn" onclick="closeGroupReportModal()">✖</button>
             <h2 class="modal-main-title">👥 團體面試綜合對比報告</h2>
             <div id="group-report-content"></div>

@@ -814,68 +814,6 @@ window.watchRoomManageReportButtons = function () {
   observer.observe(container, { childList: true, subtree: true });
 };
 
-window.openCompanyGroupReportModal = async function (roomId) {
-  const overlay = document.getElementById('group-report-overlay');
-  const content = document.getElementById('group-report-content');
-  if (!overlay || !content) {
-    alert('找不到團面報告視窗，請確認頁面結構。');
-    return;
-  }
-
-  overlay.style.display = 'flex';
-  content.innerHTML = '<div style="padding: 30px; color: #666; text-align: center;">⏳ 正在載入團面報告，請稍候...</div>';
-
-  try {
-    const res = await fetch(`/api/company/group-rooms/${roomId}/report`, { method: 'POST' });
-    const result = await res.json();
-    if (!result.success) {
-      content.innerHTML = `<div style="color: #e74c3c; padding: 20px; text-align: center;">${result.error || '報告載入失敗'}</div>`;
-      return;
-    }
-
-    const report = result.report || {};
-    const rankingHtml = (report.ranking || []).map((item, index) => `
-      <div style="margin-bottom: 12px; padding: 12px 15px; background: #f9fbf9; border-left: 4px solid #1D9E75; border-radius: 6px;">
-        <strong style="color: #2C3E50; font-size: 15px;">第 ${index + 1} 名：${item.name} (合適度: <span style="color:#1D9E75;">${item.overall_score ?? '--'}%</span>)</strong>
-        <p style="margin: 5px 0 0 0; color: #555; font-size: 14px; line-height: 1.5;">${item.reason || ''}</p>
-      </div>
-    `).join('') || '<p style="color:#888;">尚無排名資料</p>';
-
-    content.innerHTML = `
-    <div style="padding: 20px; max-height: 70vh; overflow-y: auto; line-height: 1.6;">
-      <h3 style="color:#2C3E50; margin-top:0;">📊 房間 ${roomId} 團面報告</h3>
-      <p style="color:#444;">${report.room_overview || '尚無報告摘要可顯示。'}</p>
-      <div style="margin: 20px 0; display: flex; gap: 20px; flex-wrap: wrap;">
-        <div style="flex: 1; min-width: 220px; padding: 15px; background: #f4f7f8; border-radius: 8px;">
-          <div style="font-weight: bold; margin-bottom: 8px;">報告狀態</div>
-          <div>${result.status || '已完成'}</div>
-        </div>
-        <div style="flex: 1; min-width: 220px; padding: 15px; background: #fdf2f2; border-radius: 8px;">
-          <div style="font-weight: bold; margin-bottom: 8px;">應徵者人數</div>
-          <div>${result.applicant_count ?? '--'} 人</div>
-        </div>
-      </div>
-      <h4 style="color:#2C3E50;">推薦排名</h4>
-      ${rankingHtml}
-      <div style="margin: 20px 0; display: flex; gap: 20px; flex-wrap: wrap;">
-        <div style="flex: 1; min-width: 220px; padding: 15px; background: #eef7f0; border-radius: 8px;">
-          <div style="font-weight: bold; margin-bottom: 8px; color:#1D9E75;">🗣️ 最佳溝通表現</div>
-          <div style="color:#555; font-size: 14px;">${report.best_communicator || '無資料'}</div>
-        </div>
-        <div style="flex: 1; min-width: 220px; padding: 15px; background: #eef4fb; border-radius: 8px;">
-          <div style="font-weight: bold; margin-bottom: 8px; color:#3498db;">⭐ 最突出表現</div>
-          <div style="color:#555; font-size: 14px;">${report.standout_performer || '無資料'}</div>
-        </div>
-      </div>
-      <button style="margin-top: 20px; width:100%; padding: 12px 0; background: #2e7d32; color: white; border:none; border-radius: 8px; cursor:pointer;" onclick="window.openCompanyGroupReportModal('${roomId}')">🔄 重新整理報告</button>
-    </div>
-  `;
-  } catch (err) {
-    console.error(err);
-    content.innerHTML = `<div style="color: #e74c3c; padding: 20px; text-align: center;">報告載入失敗，請稍後再試。</div>`;
-  }
-};
-
 // ================= 5. 系統啟動 =================
 window.addEventListener('DOMContentLoaded', () => {
   window.loadCompanyComponents();
@@ -929,11 +867,6 @@ window.addEventListener('DOMContentLoaded', () => {
   const btnCloseJobComparisonModal = document.getElementById('btn-close-job-comparison-modal');
   if (btnCloseJobComparisonModal) {
     btnCloseJobComparisonModal.addEventListener('click', window.closeJobComparisonModal);
-  }
-
-  if (document.getElementById('sessions-container')) {
-
-    window.generateGroupReport = window.openCompanyGroupReportModal;
   }
 
   // 🌟 你的聊天室邏輯完整放在這裡 🌟
@@ -1050,24 +983,81 @@ window.addEventListener('DOMContentLoaded', () => {
 // ==========================================
 
 // 1. 關閉 Modal
-window.closeGroupReportModal = function () {
-  const overlay = document.getElementById('group-report-overlay');
-  if (overlay) overlay.style.display = 'none';
+window.closeGroupReportModal = function() {
+    const overlay = document.getElementById('group-report-overlay');
+    if (overlay) overlay.style.display = 'none';
 };
 
-// 2. 呼叫 API 並渲染報告 (火力全開擴充版)
-window.generateGroupReport = async function (roomId) {
+function renderQASnippets(qaList) {
+    const list = Array.isArray(qaList) ? qaList : [];
+    if (list.length === 0) {
+        return '<div style="text-align:center; padding: 20px; color:#888;">無逐題問答紀錄</div>';
+    }
+
+    let html = '<div style="display: flex; flex-direction: column; gap: 12px;">';
+
+    list.forEach((item, index) => {
+        const score = Number(item.score ?? 0);
+        const question = item.question || item.prompt || '無題目';
+        const feedback = item.feedback || item.answer || item.analysis || '無具體建議';
+
+        const badgeBg = score >= 7 ? '#e8f5e9' : score >= 4 ? '#fff3e0' : '#fce4ec';
+        const badgeColor = score >= 7 ? '#2e7d32' : score >= 4 ? '#ef6c00' : '#c62828';
+
+        html += `
+            <div class="accordion-item" style="background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
+                <div class="accordion-header" onclick="toggleAccordion(this)" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 18px; cursor: pointer; background: #fff;">
+                    <div style="display: flex; align-items: flex-start; gap: 12px; flex: 1; min-width: 0; padding-right: 10px;">
+                        <span style="font-weight: bold; color: #555; font-size: 15px; min-width: 28px;">Q${index + 1}</span>
+                        <span style="color: #2c3e50; font-size: 14px; font-weight: 500; line-height: 1.5; word-break: break-word;">${question}</span>
+                    </div>
+
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="background: ${badgeBg}; color: ${badgeColor}; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: bold;">
+                            ${score}/10
+                        </span>
+                        <span class="arrow-icon" style="font-size: 12px; color: #888; transition: transform 0.3s;">▼</span>
+                    </div>
+                </div>
+
+                <div class="accordion-body" style="display: none; padding: 0 18px 18px 52px; color: #555; font-size: 14px; line-height: 1.7; border-top: 1px solid #f4f7f8; background: #fafafa;">
+                    <div style="padding-top: 14px;">
+                        <strong style="color:#2c3e50;">評語：</strong>
+                        <div style="margin-top: 6px;">${feedback}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+
+    html += '</div>';
+    return html;
+}
+
+function toggleAccordion(headerElement) {
+    const body = headerElement.nextElementSibling;
+    const arrow = headerElement.querySelector('.arrow-icon');
+
+    if (body.style.display === 'none' || !body.style.display) {
+        body.style.display = 'block';
+        arrow.style.transform = 'rotate(180deg)';
+        headerElement.style.background = '#f9fbf9';
+    } else {
+        body.style.display = 'none';
+        arrow.style.transform = 'rotate(0deg)';
+        headerElement.style.background = '#fff';
+    }
+}
+
+window.renderGroupReportModal = async function (roomId) {
   const overlay = document.getElementById('group-report-overlay');
   const content = document.getElementById('group-report-content');
-
   if (!overlay || !content) return alert('找不到報告視窗元件！');
 
-  // 顯示 Loading
   overlay.style.display = 'flex';
   content.innerHTML = '<div style="padding: 50px 20px; text-align: center; color: #666; font-size: 16px;">⏳ 正在請 AI 顧問分析同場團面表現，請稍候...<br>(約需 10~15 秒)</div>';
 
   try {
-    // 呼叫我們剛剛寫好的 API
     const res = await fetch(`/api/company/group-rooms/${roomId}/report`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
@@ -1079,102 +1069,206 @@ window.generateGroupReport = async function (roomId) {
       return;
     }
 
-    const report = result.report;
+    const report = result.report || {};
+    const candidates = Array.isArray(report.candidates) && report.candidates.length > 0
+      ? report.candidates
+      : (Array.isArray(report.ranking) ? report.ranking.map((r, idx) => ({
+          name: r.name || `候選人 ${idx + 1}`,
+          overall_score: Number(r.overall_score) || 0,
+          score_breakdown: {
+            professionalism: { score: 0, reason: '無具體評分依據' },
+            communication: { score: 0, reason: '無具體評分依據' },
+            teamwork: { score: 0, reason: '無具體評分依據' },
+            logic: { score: 0, reason: '無具體評分依據' }
+          },
+          highlights: [r.reason || '無亮點描述'],
+          concerns: ['未提供明確疑慮'],
+          transcript_snippet: '',
+          emotion: null
+        })) : []);
+    const dimLabels = { professionalism: '專業能力', communication: '溝通表達', teamwork: '團隊合作', logic: '邏輯思維' };
 
-    // --- 渲染排名 HTML ---
-    let rankingHtml = '';
-    if (report.ranking && report.ranking.length > 0) {
-      rankingHtml = report.ranking.map((r, i) => `
-                <div style="margin-bottom: 15px; padding: 15px; background: #f9fbf9; border-left: 5px solid #1D9E75; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <strong style="color: #2C3E50; font-size: 16px;">第 ${i + 1} 名：${r.name}</strong>
-                        <span style="background: #1D9E75; color: white; padding: 3px 10px; border-radius: 12px; font-size: 13px; font-weight: bold;">評分: ${r.overall_score || 'N/A'}</span>
-                    </div>
-                    <p style="margin: 0 0 5px 0; color: #1565c0; font-size: 14px; font-weight: 500;">💡 優勢：${r.core_strength || '無'}</p>
-                    <p style="margin: 0; color: #555; font-size: 14px; line-height: 1.5;">${r.reason || '無'}</p>
-                </div>
-            `).join('');
-    } else {
-      rankingHtml = '<p style="color:#888;">尚無排名資料</p>';
-    }
+    const chartHtml = `
+      <div style="background:#fff; border:1px solid #eee; border-radius:10px; padding:15px; margin-bottom:20px;">
+        <h3 style="margin:0 0 10px 0; color:#2C3E50; font-size:16px;">📈 應徵者能力對比折線圖</h3>
+        <canvas id="groupCompareChart" height="90"></canvas>
+      </div>
+    `;
 
-    // --- 渲染個人詳細分析 HTML ---
-    let individualHtml = '';
-    if (report.individual_details && report.individual_details.length > 0) {
-      individualHtml = report.individual_details.map(p => `
-                <div style="margin-bottom: 15px; padding: 12px 15px; background: #fff; border: 1px solid #e0e0e0; border-radius: 8px;">
-                    <strong style="color: #34495e; font-size: 15px;">👤 ${p.name} <span style="font-size: 13px; color: #7f8c8d; font-weight: normal;">(發言積極度: ${p.participation_level || 'N/A'})</span></strong>
-                    <div style="display: flex; gap: 15px; margin-top: 10px;">
-                        <div style="flex: 1;">
-                            <span style="color: #27ae60; font-size: 13px; font-weight: bold;">👍 亮點：</span>
-                            <ul style="margin: 5px 0 0 0; padding-left: 18px; font-size: 13px; color: #444;">
-                                ${(p.highlights || []).map(h => `<li>${h}</li>`).join('') || '<li>無特別亮點</li>'}
-                            </ul>
-                        </div>
-                        <div style="flex: 1;">
-                            <span style="color: #c0392b; font-size: 13px; font-weight: bold;">⚠️ 疑慮：</span>
-                            <ul style="margin: 5px 0 0 0; padding-left: 18px; font-size: 13px; color: #444;">
-                                ${(p.concerns || []).map(c => `<li>${c}</li>`).join('') || '<li>無明顯疑慮</li>'}
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-    } else {
-      individualHtml = '<p style="color:#888;">尚無個人分析資料</p>';
-    }
-
-    // --- 渲染完整報告畫面 ---
-    content.innerHTML = `
-            <div style="padding: 10px 20px 20px 20px; line-height: 1.6; max-height: 70vh; overflow-y: auto; background-color: #fcfcfc;">
-                
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <span style="background:#e8f5e9; color:#1D9E75; padding:6px 15px; border-radius:20px; font-size:14px; font-weight:bold;">👥 同場對比總人數：${result.applicant_count} 人</span>
-                </div>
-                
-                <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #eee; margin-bottom: 25px;">
-                    <h3 style="color:#2C3E50; margin: 0 0 10px 0; font-size: 16px;">🌟 團面氣氛與團隊動態</h3>
-                    <p style="color:#444; font-size: 14px; margin-bottom: 10px;"><strong>整體概況：</strong>${report.room_overview || '無'}</p>
-                    <p style="color:#444; font-size: 14px; margin: 0;"><strong>互動分析：</strong>${report.team_dynamics || '無'}</p>
-                </div>
-
-                <h3 style="color:#2C3E50; border-bottom:2px solid #f0f0f0; padding-bottom:8px; font-size: 16px;">🏆 綜合表現排名</h3>
-                ${rankingHtml}
-
-                <h3 style="color:#2C3E50; border-bottom:2px solid #f0f0f0; padding-bottom:8px; margin-top:25px; font-size: 16px;">🎖️ 關鍵指標人選</h3>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
-                    <div style="background: #fff3e0; padding: 12px; border-radius: 8px; border-left: 4px solid #ff9800;">
-                        <div style="color:#e65100; font-weight:bold; font-size: 14px;">🗣️ 最佳溝通者</div>
-                        <strong style="color: #333; font-size: 15px; display: block; margin: 5px 0;">${report.role_awards?.best_communicator?.name || '無'}</strong>
-                        <div style="font-size: 13px; color: #555;">${report.role_awards?.best_communicator?.reason || ''}</div>
-                    </div>
-                    <div style="background: #e3f2fd; padding: 12px; border-radius: 8px; border-left: 4px solid #2196f3;">
-                        <div style="color:#1565c0; font-weight:bold; font-size: 14px;">💻 專業最突出</div>
-                        <strong style="color: #333; font-size: 15px; display: block; margin: 5px 0;">${report.role_awards?.standout_performer?.name || '無'}</strong>
-                        <div style="font-size: 13px; color: #555;">${report.role_awards?.standout_performer?.reason || ''}</div>
-                    </div>
-                    <div style="background: #f3e5f5; padding: 12px; border-radius: 8px; border-left: 4px solid #9c27b0;">
-                        <div style="color:#7b1fa2; font-weight:bold; font-size: 14px;">🤝 最佳團隊精神</div>
-                        <strong style="color: #333; font-size: 15px; display: block; margin: 5px 0;">${report.role_awards?.best_team_player?.name || '無'}</strong>
-                        <div style="font-size: 13px; color: #555;">${report.role_awards?.best_team_player?.reason || ''}</div>
-                    </div>
-                </div>
-
-                <h3 style="color:#2C3E50; border-bottom:2px solid #f0f0f0; padding-bottom:8px; margin-top:25px; font-size: 16px;">👤 個人詳細分析</h3>
-                ${individualHtml}
-
-                <div style="background: #ffebee; padding: 15px; border-radius: 8px; border: 1px solid #ffcdd2; margin-top: 25px;">
-                    <h3 style="color:#c62828; margin: 0 0 8px 0; font-size: 15px;">💡 HR 招募後續建議</h3>
-                    <p style="color:#b71c1c; font-size: 14px; margin: 0; line-height: 1.6;">${report.hr_recommendation || '目前無特別建議'}</p>
-                </div>
-            </div>
+    const candidatesHtml = candidates.length > 0 ? candidates.map((c) => {
+      const bd = c.score_breakdown || {};
+      const breakdownRows = Object.keys(dimLabels).map(key => {
+        const item = bd[key] || {};
+        return `
+          <div style="display:flex; gap:15px; padding:10px 0; border-bottom:1px dashed #eee; align-items: flex-start;">
+            <div style="width:70px; font-weight:bold; color:#555; font-size:13px; margin-top:2px;">${dimLabels[key]}</div>
+            <div style="width:50px; font-weight:bold; color:#1D9E75; font-size:14px; margin-top:1px;">${item.score ?? '--'} 分</div>
+            <div style="flex:1; color:#444; font-size:13px; line-height:1.6; text-align: justify;">${item.reason || '無評分依據'}</div>
+          </div>
         `;
+      }).join('');
+
+      const emo = c.emotion;
+      const emoHtml = emo ? `
+        <div style="display:flex; gap:15px; margin-top:10px;">
+          <div style="flex:1; background:#f0fbf6; border-radius:8px; padding:10px; text-align:center;">
+            <div style="font-size:12px; color:#888;">正向情緒</div>
+            <div style="font-size:18px; font-weight:bold; color:#1D9E75;">${Math.round((emo.happy_ratio||0)*100)}%</div>
+          </div>
+          <div style="flex:1; background:#f4f4f4; border-radius:8px; padding:10px; text-align:center;">
+            <div style="font-size:12px; color:#888;">中性情緒</div>
+            <div style="font-size:18px; font-weight:bold; color:#666;">${Math.round((emo.neutral_ratio||0)*100)}%</div>
+          </div>
+          <div style="flex:1; background:#fff4e8; border-radius:8px; padding:10px; text-align:center;">
+            <div style="font-size:12px; color:#888;">焦慮情緒</div>
+            <div style="font-size:18px; font-weight:bold; color:#e67e22;">${Math.round((emo.sad_ratio||0)*100)}%</div>
+          </div>
+          <div style="flex:1; background:#f0f4ff; border-radius:8px; padding:10px; text-align:center;">
+            <div style="font-size:12px; color:#888;">專注度</div>
+            <div style="font-size:18px; font-weight:bold; color:#3498db;">${emo.confidence_score ?? '--'}</div>
+          </div>
+        </div>
+      ` : `<div style="margin-top:10px; color:#999; font-size:13px;">尚無此應徵者的表情偵測資料（可能面試時未啟用鏡頭分析，或該場次早於功能上線）</div>`;
+
+      const transcriptHtml = function renderCandidateDialogue(transcriptSnippet, candidateName) {
+        if (!transcriptSnippet) return '<div style="text-align:center; color:#999; padding: 10px;">無對話紀錄</div>';
+
+        const blocks = transcriptSnippet.split(/\n\n|\r\n\r\n/).map(b => b.trim()).filter(Boolean);
+        let dialogHtml = '<div style="display: flex; flex-direction: column; gap: 12px; padding: 10px 5px;">';
+
+        for (const block of blocks) {
+          const speakerName = block.split(/：|:/)[0] || '';
+          const isInterviewer = /(面試官|HR|主管|系統)/i.test(speakerName);
+
+          if (isInterviewer) {
+            dialogHtml += `
+              <div style="display: flex; justify-content: flex-start;">
+                <div style="max-width: 80%; background-color: #f1f3f4; color: #333; padding: 10px 15px; border-radius: 16px 16px 16px 4px; font-size: 14px; line-height: 1.6; box-shadow: 0 1px 3px rgba(0,0,0,0.08); white-space: pre-wrap;">
+                  🗣️ ${block}
+                </div>
+              </div>`;
+          } else {
+            dialogHtml += `
+              <div style="display: flex; justify-content: flex-end;">
+                <div style="max-width: 80%; background-color: #e8f5e9; color: #1D9E75; border: 1px solid #c8e6c9; padding: 10px 15px; border-radius: 16px 16px 4px 16px; font-size: 14px; line-height: 1.6; box-shadow: 0 1px 3px rgba(0,0,0,0.08); white-space: pre-wrap;">
+                  ${block}
+                </div>
+              </div>`;
+          }
+        }
+
+        dialogHtml += '</div>';
+        return dialogHtml;
+      }(c.transcript_snippet || '', c.name);
+
+      const qaArray = Array.isArray(c.qa) ? c.qa : [];
+      const qaContentHtml = qaArray.length > 0 ? renderQASnippets(qaArray) : '<div style="padding: 10px 0; color: #8a8a8a; font-size: 13px;">目前尚無逐題問答評估資料</div>';
+
+      const qaCardHtml = `
+            <div style="background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #e0e0e0;">
+                <h4 style="margin:0 0 10px 0; color:#2C3E50; font-size:15px; border-bottom: 2px solid #f0f0f0; padding-bottom: 8px;">🧩 逐題問答評估</h4>
+                ${qaContentHtml}
+            </div>`;
+
+      return `
+        <div style="background:#fff; border:1px solid #eee; border-radius:10px; margin-bottom:15px; overflow:hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.02);">
+          <div onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display==='none' ? 'block':'none';"
+               style="cursor:pointer; padding:14px 18px; background:#f9fbf9; display:flex; justify-content:space-between; align-items:center; transition: 0.2s;">
+            <div style="font-weight:bold; color:#2C3E50; font-size:15px;">👤 ${c.name}</div>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span style="background:#1D9E75; color:#fff; padding:4px 12px; border-radius:12px; font-size:13px; font-weight:bold;">綜合評分 ${c.overall_score ?? '--'} 分</span>
+              <span style="color:#999; font-size:12px;">▼ 點擊展開詳細資訊</span>
+            </div>
+          </div>
+          
+          <div style="display:none; padding:20px; background:#fafafa; border-top: 1px solid #eee; text-align: left;">
+            <div style="background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #e0e0e0; margin-bottom: 15px;">
+                <h4 style="margin:0 0 10px 0; color:#2C3E50; font-size:15px; border-bottom: 2px solid #f0f0f0; padding-bottom: 8px;">📋 評分依據</h4>
+                ${breakdownRows}
+            </div>
+
+            <div style="background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #e0e0e0; margin-bottom: 15px;">
+                <h4 style="margin:0 0 10px 0; color:#2C3E50; font-size:15px; border-bottom: 2px solid #f0f0f0; padding-bottom: 8px;">👁️ 表情偵測分析</h4>
+                ${emoHtml}
+            </div>
+
+            <div style="display:flex; gap:15px; margin-bottom: 15px;">
+              <div style="flex:1; background: #f4fbf7; padding: 15px; border-radius: 8px; border: 1px solid #d4efdf;">
+                <div style="color:#27ae60; font-size:14px; font-weight:bold; margin-bottom: 10px; display: flex; align-items: center; gap: 5px;">👍 亮點</div>
+                <ul style="margin:0; padding-left:20px; font-size:13px; color:#444; line-height: 1.6;">
+                  ${(c.highlights || []).map(h => `<li style="margin-bottom: 4px;">${h}</li>`).join('') || '<li>無特別亮點</li>'}
+                </ul>
+              </div>
+              <div style="flex:1; background: #fdf2f2; padding: 15px; border-radius: 8px; border: 1px solid #fadbd8;">
+                <div style="color:#c0392b; font-size:14px; font-weight:bold; margin-bottom: 10px; display: flex; align-items: center; gap: 5px;">⚠️ 疑慮</div>
+                <ul style="margin:0; padding-left:20px; font-size:13px; color:#444; line-height: 1.6;">
+                  ${(c.concerns || []).map(x => `<li style="margin-bottom: 4px;">${x}</li>`).join('') || '<li>無明顯疑慮</li>'}
+                </ul>
+              </div>
+            </div>
+
+            ${qaCardHtml}
+          </div>
+        </div>
+      `;
+    }).join('') : '<div style="padding: 20px; color: #666; background: #fff; border:1px solid #eee; border-radius:10px;">目前尚無可顯示的候選人資料，請確認該場次是否已有對話紀錄與評分結果。</div>';
+
+    content.innerHTML = `
+      <div style="padding: 10px 20px 20px 20px; line-height: 1.6; max-height: 75vh; overflow-y: auto; background-color: #fcfcfc;">
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 15px;">
+          <span style="background:#e8f5e9; color:#1D9E75; padding:6px 15px; border-radius:20px; font-size:14px; font-weight:bold; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">👥 同場對比總人數：${result.applicant_count} 人</span>
+        </div>
+
+        <h3 style="color:#2C3E50; border-bottom:2px solid #f0f0f0; padding-bottom:8px; font-size: 16px;">👤 逐位應徵者詳細分析（含評分依據與專屬逐字稿）</h3>
+        ${candidatesHtml}
+
+        ${chartHtml}
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-top: 15px;">
+          <div style="background: #fff3e0; padding: 12px; border-radius: 8px; border-left: 4px solid #ff9800;">
+            <div style="color:#e65100; font-weight:bold; font-size: 14px;">🗣️ 最佳溝通者</div>
+            <div style="font-size: 13px; color: #555; margin-top:5px;">${report.best_communicator || '無'}</div>
+          </div>
+          <div style="background: #e3f2fd; padding: 12px; border-radius: 8px; border-left: 4px solid #2196f3;">
+            <div style="color:#1565c0; font-weight:bold; font-size: 14px;">💻 專業最突出</div>
+            <div style="font-size: 13px; color: #555; margin-top:5px;">${report.standout_performer || '無'}</div>
+          </div>
+        </div>
+
+        <div style="background: #ffebee; padding: 15px; border-radius: 8px; border: 1px solid #ffcdd2; margin-top: 20px;">
+          <h3 style="color:#c62828; margin: 0 0 8px 0; font-size: 15px;">💡 HR 招募後續建議</h3>
+          <p style="color:#b71c1c; font-size: 14px; margin: 0; line-height: 1.6;">${report.hr_recommendation || '目前無特別建議'}</p>
+        </div>
+      </div>
+    `;
+
+    if (window.Chart && candidates.length > 0) {
+      const ctx = document.getElementById('groupCompareChart');
+      const dimKeys = Object.keys(dimLabels);
+      const colors = ['#1D9E75', '#3498db', '#e67e22', '#9b59b6', '#e74c3c', '#16a085'];
+      const datasets = candidates.map((c, i) => ({
+        label: c.name,
+        data: dimKeys.map(k => (c.score_breakdown?.[k]?.score) ?? null),
+        borderColor: colors[i % colors.length],
+        backgroundColor: colors[i % colors.length],
+        tension: 0.3,
+        fill: false
+      }));
+      new Chart(ctx, {
+        type: 'line',
+        data: { labels: Object.values(dimLabels), datasets },
+        options: { responsive: true, scales: { y: { min: 0, max: 100 } }, plugins: { legend: { position: 'bottom' } } }
+      });
+    }
 
   } catch (err) {
     console.error(err);
     content.innerHTML = `<div style="color:#e74c3c; padding:20px; text-align:center;">連線失敗或發生不可預期的錯誤，請稍後再試。</div>`;
   }
 };
+
+window.generateGroupReport = window.renderGroupReportModal;
+window.openCompanyGroupReportModal = window.renderGroupReportModal;
 // ==========================================
 // 📊 職缺綜合對比大報告功能
 // ==========================================
