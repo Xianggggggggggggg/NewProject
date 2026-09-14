@@ -218,52 +218,29 @@ function stopAllAudio() {
     if (talkHR) talkHR.classList.remove('active');
 }
 
-
 async function playAudio(base64Data, targetId) {
     try {
         if (!targetId) targetId = 'aiModel_Tech';
-
         if (!audioContext) {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)({
-                sampleRate: 24000
-            });
+            audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
         }
-
-        if (audioContext.state === 'suspended') {
-            await audioContext.resume();
-        }
+        if (audioContext.state === 'suspended') await audioContext.resume();
 
         const binaryString = atob(base64Data);
         const bytes = new Uint8Array(binaryString.length);
-
-        for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-        }
-
+        for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
         const int16Array = new Int16Array(bytes.buffer);
-
-        const audioBuffer = audioContext.createBuffer(
-            1,
-            int16Array.length,
-            24000
-        );
-
-        const channelData = audioBuffer.getChannelData(0);
-
-        for (let i = 0; i < int16Array.length; i++) {
-            channelData[i] = int16Array[i] / 32768.0;
-        }
+        const audioBuffer = audioContext.createBuffer(1, int16Array.length, 24000);
+        audioBuffer.getChannelData(0).set(Array.from(int16Array).map(v => v / 32768.0));
 
         const source = audioContext.createBufferSource();
         source.buffer = audioBuffer;
         source.connect(audioContext.destination);
-
         activeSources.push(source);
 
         const now = audioContext.currentTime;
-
-        if (nextPlayTime < now) {
-            nextPlayTime = now + 0.15;
+        if (nextPlayTime < now + 0.2) {
+            nextPlayTime = now + 0.5;
         }
 
         window.audioAnimationQueue.push({
@@ -273,10 +250,8 @@ async function playAudio(base64Data, targetId) {
         });
 
         source.start(nextPlayTime);
-
         nextPlayTime += audioBuffer.duration;
-
-    } catch (err) {
+        } catch (err) {
         console.error("❌ [音訊系統] playAudio 發生錯誤:", err);
     }
 }
@@ -335,6 +310,13 @@ async function startGroupInterview() {
             audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
         }
         await audioContext.resume();
+
+        // 🌟 核心修復 1：強制喚醒音訊硬體 (解開喇叭/藍牙休眠)
+        const silentBuffer = audioContext.createBuffer(1, 160, 16000);
+        const silentSource = audioContext.createBufferSource();
+        silentSource.buffer = silentBuffer;
+        silentSource.connect(audioContext.destination);
+        silentSource.start();
 
         // 啟動相機與麥克風
         const stream = await navigator.mediaDevices.getUserMedia({
