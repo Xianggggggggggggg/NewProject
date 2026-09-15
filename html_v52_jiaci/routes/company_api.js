@@ -642,17 +642,24 @@ router.post('/group-rooms/:roomId/report', async (req, res) => {
 
         const { data: transcripts, error: transErr } = await supabaseAdmin
             .from('transcripts')
-            .select('text_content')
+            .select('text_content, created_at')
             .in('session_id', sessionIds)
-            .order('created_at', { ascending: false })
-            .limit(1);
+            .order('created_at', { ascending: false });
 
         if (transErr) throw transErr;
-        if (!transcripts || transcripts.length === 0) {
+        const usableTranscripts = (transcripts || [])
+            .filter(item => typeof item.text_content === 'string' && item.text_content.trim())
+            .sort((a, b) => {
+                const lengthDiff = b.text_content.trim().length - a.text_content.trim().length;
+                if (lengthDiff !== 0) return lengthDiff;
+                return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+            });
+
+        if (usableTranscripts.length === 0) {
             return res.status(400).json({ success: false, error: '此場團體面試尚無完整的對話逐字稿，無法進行 AI 分析。' });
         }
 
-        const groupTranscript = transcripts[0].text_content;
+        const groupTranscript = usableTranscripts[0].text_content.trim();
 
         const perCandidateTranscript = splitTranscriptByCandidate(groupTranscript, candidateNames);
         candidates.forEach(c => {
