@@ -253,9 +253,7 @@ async function playAudio(base64Data, targetId) {
         activeSources.push(source);
 
         const now = audioContext.currentTime;
-        if (nextPlayTime < now + 0.2) {
-            nextPlayTime = now + 0.5;
-        }
+        if (nextPlayTime < now + 0.5) { nextPlayTime = now + 0.8; }
 
         window.audioAnimationQueue.push({
             targetId: targetId,
