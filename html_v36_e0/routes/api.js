@@ -330,7 +330,7 @@ router.post('/interview-result', async (req, res) => {
                 .select('session_id')
                 .eq('resume_id', resume_id)
                 // 同時比對 session_id 或 room_id，確保單人/多人模式都能命中
-                .or(`session_id.eq.\({session_id},room_id.eq.\){session_id}`)
+                .or(`session_id.eq.${session_id},room_id.eq.${session_id}`)
                 .single();
 
             if (sessionData) {
