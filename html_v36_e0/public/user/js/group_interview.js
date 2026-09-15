@@ -174,34 +174,48 @@ function appendTranscript(role, text, ai_role = 'HR', candidateName = '應徵者
     const box = document.getElementById('transcriptBox');
     if (!box) return;
 
+    // 1. 決定標題與顏色
+    let prefix = '';
+    let bgColor = '', textColor = '', border = 'none';
+
+    if (role === 'ai') {
+        if (ai_role === '真人HR') {
+            prefix = '🕵️ 真人面試官：\n';
+            bgColor = "#fff3e0"; textColor = "#d35400"; border = "1px solid #ffe0b2";
+        } else if (ai_role === 'HR') {
+            prefix = '👩‍💼 人資 (HR)：\n';
+            bgColor = "#f0f0f0"; textColor = "#333";
+        } else {
+            prefix = '👨‍💻 部門主管：\n';
+            bgColor = "#ffebee"; textColor = "#c62828";
+        }
+    } else {
+        prefix = `👤 ${candidateName}：\n`;
+        bgColor = "#e8f0fe"; textColor = "#1a73e8";
+    }
+
+    // 🌟 2. 智慧合併邏輯：如果上一個對話框是同一個人，就直接無縫接上去！
+    const lastMsg = box.lastElementChild;
+    if (lastMsg && lastMsg.className === (role === 'ai' ? 'ai-msg' : 'user-msg') && lastMsg.innerText.startsWith(prefix)) {
+        // 把前面的標題濾掉，只接上新的字
+        const cleanText = text.replace(prefix, '');
+        lastMsg.innerText += cleanText; 
+        box.scrollTop = box.scrollHeight;
+        return;
+    }
+
+    // 3. 如果是換人說話，才建立新的對話框
     const msgDiv = document.createElement('div');
     msgDiv.className = role === 'ai' ? 'ai-msg' : 'user-msg';
     msgDiv.style.margin = "10px 0";
     msgDiv.style.padding = "10px";
     msgDiv.style.borderRadius = "8px";
+    msgDiv.style.backgroundColor = bgColor;
+    msgDiv.style.color = textColor;
+    msgDiv.style.border = border;
+    msgDiv.style.textAlign = role === 'ai' ? "left" : "right";
+    msgDiv.innerText = prefix + text;
 
-    if (role === 'ai') {
-        if (ai_role === '真人HR') {
-            msgDiv.style.backgroundColor = "#fff3e0";
-            msgDiv.style.color = "#d35400";
-            msgDiv.style.border = "1px solid #ffe0b2";
-            msgDiv.innerText = '🕵️ 真人面試官：\n' + text;
-        } else if (ai_role === 'HR') {
-            msgDiv.style.backgroundColor = "#f0f0f0";
-            msgDiv.style.color = "#333";
-            msgDiv.innerText = '👩‍💼 人資 (HR)：\n' + text;
-        } else {
-            msgDiv.style.backgroundColor = "#ffebee";
-            msgDiv.style.color = "#c62828";
-            msgDiv.innerText = '👨‍💻 部門主管：\n' + text;
-        }
-        msgDiv.style.textAlign = "left";
-    } else {
-        msgDiv.style.backgroundColor = "#e8f0fe";
-        msgDiv.style.color = "#1a73e8";
-        msgDiv.style.textAlign = "right";
-        msgDiv.innerText = `👤 ${candidateName}：\n${text}`;
-    }
     box.appendChild(msgDiv);
     box.scrollTop = box.scrollHeight;
 }
