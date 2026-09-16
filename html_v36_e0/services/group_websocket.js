@@ -1213,8 +1213,7 @@ function setupGroupWebSocket(options) {
                     roomState.isAiSpeaking = false;
                     roomState.currentInterviewer = 'WAITING_HUMAN';
 
-                    // 🌟 新增這行：AI 面試一結束，立刻強制把對話存進資料庫！
-                    saveToDatabase();
+                    setTimeout(() => saveToDatabase(), 2200);
 
                     // ⭐ 清除 AI 發言權
                     // 後面任何應徵者講話都不再送進 Gemini

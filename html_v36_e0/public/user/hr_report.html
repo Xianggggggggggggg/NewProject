@@ -966,11 +966,10 @@
           fetch(`/api/emotion?session_id=${sessionId}`).catch(() => null), // 情緒 API 可選
         ]);
 
-        if (!resResume.ok)     throw new Error('履歷資料讀取失敗');
-        if (!resTranscript.ok) throw new Error('找不到該場次對話紀錄');
+        if (!resResume.ok) throw new Error('履歷資料讀取失敗');
 
         const resumeData    = await resResume.json();
-        const transcriptData = await resTranscript.json();
+        const transcriptData = resTranscript.ok ? await resTranscript.json() : null;
         const emotionData   = resEmotion?.ok ? await resEmotion.json() : null;
 
         renderResume(resumeData);

@@ -69,23 +69,46 @@ router.get('/transcript', async (req, res) => {
     if (!session_id) return res.status(400).json({ error: "缺少 session_id" });
     
     try {
+        const { data: sessionData, error: sessionError } = await supabase
+            .from('interview_sessions')
+            .select('session_id, room_id')
+            .eq('session_id', session_id)
+            .maybeSingle();
+
+        if (sessionError) throw sessionError;
+
+        const sessionIds = sessionData?.room_id
+            ? (await supabase
+                .from('interview_sessions')
+                .select('session_id')
+                .eq('room_id', sessionData.room_id)).data?.map(item => item.session_id) || [session_id]
+            : [session_id];
+
         const { data, error } = await supabase
             .from('transcripts')
-            .select('text_content')
-            .eq('session_id', session_id)
+            .select('text_content, created_at')
+            .in('session_id', sessionIds)
             .order('created_at', { ascending: false })
-            .limit(1);
+            .limit(20);
 
         if (error) {
             console.error("❌ Supabase 讀取錯誤:", error.message);
             return res.status(500).json({ error: "資料庫讀取錯誤" });
         }
 
-        if (!data || data.length === 0) {
+        const transcript = (data || [])
+            .filter(item => typeof item.text_content === 'string' && item.text_content.trim())
+            .sort((a, b) => {
+                const lengthDiff = b.text_content.trim().length - a.text_content.trim().length;
+                if (lengthDiff !== 0) return lengthDiff;
+                return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+            })[0];
+
+        if (!transcript) {
             return res.status(404).json({ error: "找不到該場次的對話紀錄" });
         }
 
-        res.json({ transcript: data[0].text_content });
+        res.json({ transcript: transcript.text_content.trim() });
     } catch (err) {
         console.error("❌ 伺服器錯誤:", err);
         res.status(500).json({ error: "伺服器錯誤" });
@@ -603,18 +626,37 @@ router.get('/report', async (req, res) => {
 
         if (!isValidReport) {
             console.log(`⏳ [自動補救] 偵測到 ${session_id} 的報告為 null，正在生成...`);
+            const { data: reportSession, error: reportSessionErr } = await supabase
+                .from('interview_sessions')
+                .select('room_id')
+                .eq('session_id', session_id)
+                .maybeSingle();
+
+            if (reportSessionErr) throw reportSessionErr;
+
+            const reportSessionIds = reportSession?.room_id
+                ? (await supabase
+                    .from('interview_sessions')
+                    .select('session_id')
+                    .eq('room_id', reportSession.room_id)).data?.map(item => item.session_id) || [session_id]
+                : [session_id];
+
             const { data: transcriptData, error: transcriptErr } = await supabase
                 .from('transcripts')
-                .select('text_content')
-                .eq('session_id', session_id)
+                .select('text_content, created_at')
+                .in('session_id', reportSessionIds)
                 .order('created_at', { ascending: false })
-                .limit(1);
+                .limit(20);
             
-            if (transcriptErr || !transcriptData || transcriptData.length === 0) {
+            const transcriptRow = (transcriptData || [])
+                .filter(item => typeof item.text_content === 'string' && item.text_content.trim())
+                .sort((a, b) => b.text_content.trim().length - a.text_content.trim().length)[0];
+
+            if (transcriptErr || !transcriptRow) {
                 return res.status(404).json({ error: "找不到該場次的對話紀錄，無法生成報告" });
             }
             
-            const transcript = transcriptData[0].text_content;
+            const transcript = transcriptRow.text_content.trim();
             reportData = await generateReportByGemini(buildReportPrompt(transcript, evalData.cheat_count || 0));
             
             const { error: updateErr } = await supabase.from('evaluation_reports').update({ full_report_json: reportData }).eq('session_id', session_id);

@@ -562,9 +562,50 @@ router.delete('/group-rooms/:id', async (req, res) => {
 // 👥 團體面試專屬：單場多人面試綜合對比報告 API (逐字稿直讀版)
 // ==========================================
 
+router.get('/group-rooms/:roomId/report', async (req, res) => {
+    try {
+        const { data, error } = await supabaseAdmin
+            .from('group_room_reports')
+            .select('report_json, applicant_count_at_generation, updated_at')
+            .eq('room_id', req.params.roomId)
+            .maybeSingle();
+
+        if (error) throw error;
+        if (!data) return res.json({ success: true, exists: false });
+
+        res.json({
+            success: true,
+            exists: true,
+            report: data.report_json,
+            applicant_count: data.applicant_count_at_generation,
+            updated_at: data.updated_at
+        });
+    } catch (err) {
+        console.error('讀取團面報告快取失敗:', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 router.post('/group-rooms/:roomId/report', async (req, res) => {
     try {
         const { roomId } = req.params;
+
+        const { data: cachedReport, error: cacheErr } = await supabaseAdmin
+            .from('group_room_reports')
+            .select('report_json, applicant_count_at_generation, updated_at')
+            .eq('room_id', roomId)
+            .maybeSingle();
+
+        if (cacheErr) throw cacheErr;
+        if (cachedReport) {
+            return res.json({
+                success: true,
+                report: cachedReport.report_json,
+                applicant_count: cachedReport.applicant_count_at_generation,
+                updated_at: cachedReport.updated_at,
+                cached: true
+            });
+        }
 
         const { data: sessions, error: sessionsErr } = await supabaseAdmin
             .from('interview_sessions')
@@ -601,17 +642,24 @@ router.post('/group-rooms/:roomId/report', async (req, res) => {
 
         const { data: transcripts, error: transErr } = await supabaseAdmin
             .from('transcripts')
-            .select('text_content')
+            .select('text_content, created_at')
             .in('session_id', sessionIds)
-            .order('created_at', { ascending: false })
-            .limit(1);
+            .order('created_at', { ascending: false });
 
         if (transErr) throw transErr;
-        if (!transcripts || transcripts.length === 0) {
+        const usableTranscripts = (transcripts || [])
+            .filter(item => typeof item.text_content === 'string' && item.text_content.trim())
+            .sort((a, b) => {
+                const lengthDiff = b.text_content.trim().length - a.text_content.trim().length;
+                if (lengthDiff !== 0) return lengthDiff;
+                return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+            });
+
+        if (usableTranscripts.length === 0) {
             return res.status(400).json({ success: false, error: '此場團體面試尚無完整的對話逐字稿，無法進行 AI 分析。' });
         }
 
-        const groupTranscript = transcripts[0].text_content;
+        const groupTranscript = usableTranscripts[0].text_content.trim();
 
         const perCandidateTranscript = splitTranscriptByCandidate(groupTranscript, candidateNames);
         candidates.forEach(c => {
@@ -637,6 +685,7 @@ overall_score 為四項的加權平均（專業40%、溝通25%、團隊20%、邏
 
 另外，請為每位應徵者補充「qa」陣列，代表逐題問答評估：
 - 每一個 qa item 都要對應一個剛剛問答中的關鍵問題
+- answer：面試者對該問題的真實原文回答，必須直接引用逐字稿；不能寫摘要，找不到時填「未辨識到回答」
 - question：問題內容
 - score：0-10 的整數分數
 - feedback：對該題的具體回饋與建議
@@ -656,7 +705,7 @@ overall_score 為四項的加權平均（專業40%、溝通25%、團隊20%、邏
       },
       "highlights": ["亮點1","亮點2"],
       "concerns": ["待改進1"],
-      "qa": [{ "question": "問題內容", "score": 7, "feedback": "具體建議" }]
+    "qa": [{ "question": "問題內容", "answer": "面試者真實回答原文", "score": 7, "feedback": "具體建議" }]
     }
   ],
   "best_communicator": "本場團面中溝通表達最佳的人選姓名與理由",
@@ -712,7 +761,19 @@ ${groupTranscript}
             .sort((a, b) => (b.overall_score || 0) - (a.overall_score || 0))
             .map(c => ({ name: c.name, overall_score: c.overall_score, reason: c.highlights?.[0] || '' }));
 
-        res.json({ success: true, report: reportJson, applicant_count: candidateNames.length });
+        const generatedAt = new Date().toISOString();
+        const { error: cacheWriteErr } = await supabaseAdmin
+            .from('group_room_reports')
+            .upsert({
+                room_id: roomId,
+                report_json: reportJson,
+                applicant_count_at_generation: candidateNames.length,
+                updated_at: generatedAt
+            }, { onConflict: 'room_id' });
+
+        if (cacheWriteErr) throw cacheWriteErr;
+
+        res.json({ success: true, report: reportJson, applicant_count: candidateNames.length, updated_at: generatedAt, cached: false });
 
     } catch (err) {
         console.error('生成團面報告失敗:', err);

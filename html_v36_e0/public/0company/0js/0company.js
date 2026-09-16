@@ -999,7 +999,8 @@ function renderQASnippets(qaList) {
     list.forEach((item, index) => {
         const score = Number(item.score ?? 0);
         const question = item.question || item.prompt || '無題目';
-        const feedback = item.feedback || item.answer || item.analysis || '無具體建議';
+        const answer = item.answer || item.response || item.actual_answer || '未辨識到回答';
+        const feedback = item.feedback || item.analysis || '無具體建議';
 
         const badgeBg = score >= 7 ? '#e8f5e9' : score >= 4 ? '#fff3e0' : '#fce4ec';
         const badgeColor = score >= 7 ? '#2e7d32' : score >= 4 ? '#ef6c00' : '#c62828';
@@ -1022,6 +1023,10 @@ function renderQASnippets(qaList) {
 
                 <div class="accordion-body" style="display: none; padding: 0 18px 18px 52px; color: #555; font-size: 14px; line-height: 1.7; border-top: 1px solid #f4f7f8; background: #fafafa;">
                     <div style="padding-top: 14px;">
+                    <strong style="color:#2c3e50;">面試者真實回答：</strong>
+                    <div style="margin-top: 6px; white-space: pre-wrap; color:#1D9E75;">${answer}</div>
+                  </div>
+                  <div style="padding-top: 14px;">
                         <strong style="color:#2c3e50;">評語：</strong>
                         <div style="margin-top: 6px;">${feedback}</div>
                     </div>
@@ -1055,14 +1060,21 @@ window.renderGroupReportModal = async function (roomId) {
   if (!overlay || !content) return alert('找不到報告視窗元件！');
 
   overlay.style.display = 'flex';
-  content.innerHTML = '<div style="padding: 50px 20px; text-align: center; color: #666; font-size: 16px;">⏳ 正在請 AI 顧問分析同場團面表現，請稍候...<br>(約需 10~15 秒)</div>';
+  content.innerHTML = '<div style="padding: 50px 20px; text-align: center; color: #666; font-size: 16px;">⏳ 正在讀取團面綜合報告...</div>';
 
   try {
-    const res = await fetch(`/api/company/group-rooms/${roomId}/report`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    });
-    const result = await res.json();
+    const cachedRes = await fetch(`/api/company/group-rooms/${roomId}/report`);
+    const cachedResult = await cachedRes.json();
+    let result = cachedResult;
+
+    if (cachedResult.success && !cachedResult.exists) {
+      content.innerHTML = '<div style="padding: 50px 20px; text-align: center; color: #1D9E75; font-size: 16px;">🧠 AI 正在分析同場團面表現，請稍候...<br>(約需 10~15 秒)</div>';
+      const res = await fetch(`/api/company/group-rooms/${roomId}/report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      result = await res.json();
+    }
 
     if (!result.success) {
       content.innerHTML = `<div style="color:#e74c3c; padding:20px; background:#fdf2f2; border-radius:8px; margin:10px;">產生失敗：${result.error}</div>`;
