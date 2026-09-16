@@ -571,13 +571,13 @@ async function startGroupInterview() {
         processor = audioContext.createScriptProcessor(4096, 1, 1);
 
         processor.onaudioprocess = (e) => {
-            console.log("🎤 [麥克風] onaudioprocess 觸發", {
-                wsReady: ws?.readyState,
-                isSetupComplete
-            });
+            // (原本可能有一些 console.log)
             const aiAudioStillPlaying =
                 audioContext &&
                 nextPlayTime > audioContext.currentTime + 0.05;
+
+            // 🌟 1. 抓取目前麥克風的「真實開關狀態」
+            const isMicEnabled = myStream && myStream.getAudioTracks().length > 0 && myStream.getAudioTracks()[0].enabled;
 
             if (
                 ws &&
@@ -588,6 +588,11 @@ async function startGroupInterview() {
                 !window.isAIPaused &&
                 !window.aiPhaseFinished
             ) {
+                // 🌟 2. 核心防呆：如果使用者已經關麥了，直接 return 拒絕送出任何聲音給 AI！
+                if (!isMicEnabled) {
+                    return; 
+                }
+
                 const inputData = e.inputBuffer.getChannelData(0);
                 let rms = 0;
                 for (let i = 0; i < inputData.length; i++) {
@@ -603,11 +608,7 @@ async function startGroupInterview() {
                 }
 
                 const base64Audio = btoa(String.fromCharCode.apply(null, new Uint8Array(pcmData.buffer)));
-                console.log("📤 [語音] 正在傳送 PCM 到後端", {
-                    sessionId: window.currentSessionId,
-                    rms: rms,
-                    isMainSpeaker: isMainSpeaker
-                });
+                
                 ws.send(JSON.stringify({
                     sessionId: window.currentSessionId,
                     speakerActive: isMainSpeaker,
