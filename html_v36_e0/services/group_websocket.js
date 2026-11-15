@@ -1011,6 +1011,13 @@ ${formatQuestionHistory('MANAGER')}
                 }
 
                 if (response.serverContent?.interrupted) {
+                    if (roomState.currentInterviewer === role) {
+                        roomState.isAiSpeaking = false;
+
+                        console.log(
+                            `⏸️ [${role}] Gemini 生成遭中斷，已解除 AI 發言鎖定`
+                        );
+                    }
 
                     const isThisRoleWrapping =
                         (
@@ -1725,6 +1732,9 @@ ${formatQuestionHistory('MANAGER')}
                                 room.isAiSpeaking &&
                                 parsedMsg.realtimeInput.audio
                             ) {
+                                console.log(
+                                    `🚫 [音訊遭阻擋] isAiSpeaking=true，角色：${room.currentInterviewer}`
+                                );
                                 return;
                             }
                             // ⭐ 正常版 暫時更改
