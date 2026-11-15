@@ -6,6 +6,7 @@ const OpenCC = require('opencc-js');
 const convert = OpenCC.Converter({ from: 'cn', to: 'tw' });
 
 const MODEL_NAME = "models/gemini-3.1-flash-live-preview";
+const ANSWER_SILENCE_MS = 3000;
 const GEMINI_WS_URL = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${process.env.GEMINI_API_KEY}`;
 
 // 🌟 記憶體中管理所有房間的成員與狀態
@@ -136,6 +137,26 @@ function setupGroupWebSocket(options) {
             roomState.managerSpeechBuffer = "";
             roomState.hrFlushTimeout = null;
             roomState.managerFlushTimeout = null;
+            // ==========================================
+            // 團體面試輪次管理
+            // ==========================================
+            // 記錄本輪已完成回答的應徵者
+            roomState.hrRoundAnswered = new Set();
+            roomState.managerRoundAnswered = new Set();
+            // 是否已完成本輪，等待下一輪第一位應徵者
+            roomState.hrRoundAwaitingNextStart = false;
+            roomState.managerRoundAwaitingNextStart = false;
+            // 如果 AI 已提早點名下一輪第一位，先暫存狀態
+            // 避免 inputTranscription 與 AI 輸出事件順序不同而錯誤重置 Set
+            roomState.hrPendingNextRoundStart = false;
+            roomState.managerPendingNextRoundStart = false;
+            // HR 的開場自我介紹不計入正式提問輪數
+            roomState.hrIntroRoundPending = true;
+            // 獨立保存 AI 目前這一輪的生成文字
+            // 不受原本逐字稿 2 秒整理機制影響
+            roomState.hrCurrentTurnText = '';
+            roomState.managerCurrentTurnText = '';
+
 
             // (Prompt 設定維持原樣...)
             const candidatesNamesStr = candidatesList.map(c => c.name).join('、');
@@ -285,8 +306,7 @@ function setupGroupWebSocket(options) {
 
                             realtimeInputConfig: {
                                 automaticActivityDetection: {
-                                    silenceDurationMs: 3000
-                                }
+                                    silenceDurationMs: ANSWER_SILENCE_MS                                }
                             }
                         }
                     }));
@@ -326,8 +346,7 @@ function setupGroupWebSocket(options) {
 
                         realtimeInputConfig: {
                             automaticActivityDetection: {
-                                silenceDurationMs: 3000
-                            }
+                                silenceDurationMs: ANSWER_SILENCE_MS                            }
                         }
                     }
                 }));
@@ -344,12 +363,257 @@ function setupGroupWebSocket(options) {
 
                         realtimeInputConfig: {
                             automaticActivityDetection: {
-                                silenceDurationMs: 3000
-                            }
+                                silenceDurationMs: ANSWER_SILENCE_MS                            }
                         }
                     }
                 }));
             });
+
+            const normalizeTranscript = (text) => {
+                return convert(String(text || '').trim())
+                    .replace(
+                        /([\u3400-\u9FFF])\s+(?=[\u3400-\u9FFF])/g,
+                        '$1'
+                    )
+                    .replace(/\s+([，。！？、,.!?])/g, '$1')
+                    .trim();
+            };
+
+            const beginHandover = (role, finalUserText = '') => {
+
+                const isHR = role === 'HR';
+
+                const wrappingKey = isHR
+                    ? 'isHRWrappingUp'
+                    : 'isManagerWrappingUp';
+
+                const targetWs = isHR
+                    ? roomState.hrWs
+                    : roomState.managerWs;
+
+                if (
+                    roomState.currentInterviewer !== role ||
+                    roomState[wrappingKey] ||
+                    roomState.isFinalStage ||
+                    roomState.aiPhaseFinished
+                ) {
+                    return;
+                }
+
+                if (
+                    !targetWs ||
+                    targetWs.readyState !== WebSocket.OPEN
+                ) {
+                    console.error(`❌ ${role} 無法交接：Gemini 連線未開啟`);
+                    return;
+                }
+
+                // 鎖定交接狀態，防止重複觸發
+                roomState[wrappingKey] = true;
+
+                roomState.pendingHandover = isHR
+                    ? 'HR_TO_MANAGER'
+                    : 'MANAGER_TO_HR';
+
+                // 取出 AI 目前已生成的文字
+                const lastAiSpeech = isHR
+                    ? roomState.hrCurrentTurnText
+                    : roomState.managerCurrentTurnText;
+
+                const cleanLastSpeech = lastAiSpeech
+                    .split(/[。！？]/)
+                    .map(s => s.trim())
+                    .filter(s => s.length > 2)
+                    .pop() || '';
+
+                console.log(
+                    `🧩 [${role}交接] 已生成的文字：`,
+                    cleanLastSpeech || '目前沒有可承接的語句'
+                );
+
+                const contextLine = cleanLastSpeech
+                    ? `
+        你剛剛已生成的語句：
+        「${cleanLastSpeech}」
+
+        請參考這段內容的語意，
+        自然完成目前尚未完成的回饋。
+        不要重複朗讀，也不要繼續原本可能尚未完成的問題。
+        `
+                    : `
+        請根據目前整場面試的對話脈絡，
+        給予簡短、自然的整體回饋。
+        `;
+
+                const handoverLine = isHR
+                    ? HR_HANDOVER_SENTENCE
+                    : MANAGER_HANDOVER_SENTENCE;
+
+                const injectionPrompt = `
+    [系統交接指令]
+
+    所有應徵者都已經完成本階段最後一輪回答。
+
+    最後一位應徵者的回答：
+    「${finalUserText}」
+
+    ${contextLine}
+
+    你的任務只有兩件事：
+
+    1. 簡短完成目前的收尾回饋。
+       不可以再提出問題。
+       不可以開始新的面試題目。
+
+    2. 接著必須逐字說出：
+       「${handoverLine}」
+
+    說完後立即停止發言。
+    `;
+
+                // 正式進入交接階段
+                roomState.isAiSpeaking = true;
+
+                targetWs.send(JSON.stringify({
+                    clientContent: {
+                        turns: [{
+                            role: 'user',
+                            parts: [{
+                                text: injectionPrompt
+                            }]
+                        }],
+                        turnComplete: true
+                    }
+                }));
+
+                console.log(`🚀 [${role}] 已送出交接收尾指令`);
+            };
+
+            const markCandidateAnswerCompleted = (
+                role,
+                candidateResumeId,
+                finalUserText
+            ) => {
+
+                if (
+                    !candidateResumeId ||
+                    roomState.currentInterviewer !== role
+                ) {
+                    return;
+                }
+
+                const candidateExists = candidatesList.some(
+                    c => c.resumeId === candidateResumeId
+                );
+
+                if (!candidateExists) {
+                    console.warn('⚠️ 找不到應徵者身分，略過輪次計算');
+                    return;
+                }
+
+                const isHR = role === 'HR';
+
+                const answeredSet = isHR
+                    ? roomState.hrRoundAnswered
+                    : roomState.managerRoundAnswered;
+
+                const countKey = isHR
+                    ? 'hrRoundCount'
+                    : 'managerRoundCount';
+
+                const targetKey = isHR
+                    ? 'hrTargetRounds'
+                    : 'managerTargetRounds';
+
+                const awaitingKey = isHR
+                    ? 'hrRoundAwaitingNextStart'
+                    : 'managerRoundAwaitingNextStart';
+
+                const pendingNextKey = isHR
+                    ? 'hrPendingNextRoundStart'
+                    : 'managerPendingNextRoundStart';
+
+                // 已經完成的上一輪，不接受舊語音重複計算
+                if (
+                    roomState[awaitingKey] &&
+                    !roomState[pendingNextKey]
+                ) {
+                    console.log('ℹ️ 尚未開始下一輪，忽略重複回答');
+                    return;
+                }
+
+                // 同一位應徵者每輪只能計算一次
+                if (answeredSet.has(candidateResumeId)) {
+                    console.log('ℹ️ 此應徵者已完成本輪，不重複計算');
+                    return;
+                }
+
+                answeredSet.add(candidateResumeId);
+
+                console.log(
+                    `👤 [${role}] 本輪回答進度：${answeredSet.size}/${candidatesList.length}`
+                );
+
+                // 還有人尚未完成回答
+                if (answeredSet.size < candidatesList.length) {
+                    return;
+                }
+
+                console.log(`✅ [${role}] 全體應徵者已完成本輪`);
+
+                // HR 開場自我介紹是暖場，不計入正式題數
+                const isIntroRound =
+                    isHR && roomState.hrIntroRoundPending;
+
+                if (isIntroRound) {
+
+                    roomState.hrIntroRoundPending = false;
+
+                    roomState[awaitingKey] = true;
+
+                    console.log('ℹ️ HR 自我介紹暖場結束，不計入正式題數');
+
+                } else {
+
+                    // 正式完成一輪
+                    roomState[countKey]++;
+
+                    roomState[awaitingKey] = true;
+
+                    const targetRounds = Math.max(
+                        1,
+                        Number(roomState[targetKey]) || 1
+                    );
+
+                    console.log(
+                        `📊 [${role}] 正式完成輪數：${roomState[countKey]}/${targetRounds}`
+                    );
+
+                    // 達到後端設定的題數，正式交接
+                    if (roomState[countKey] >= targetRounds) {
+
+                        console.log(`🎯 [${role}] 已達到設定題數，開始交接`);
+
+                        roomState[pendingNextKey] = false;
+
+                        beginHandover(role, finalUserText);
+
+                        return;
+                    }
+                }
+
+                // 如果 AI 已經提早點名下一輪第一位
+                // 現在才確認上一輪的最後一位已完成
+                if (roomState[pendingNextKey]) {
+
+                    answeredSet.clear();
+
+                    roomState[awaitingKey] = false;
+                    roomState[pendingNextKey] = false;
+
+                    console.log(`🔄 [${role}] 已同步啟動下一輪`);
+                }
+            };
 
             // 3. 定義處理 AI 回應的邏輯 (傳入 roomState 作為參數)
             const handleAiResponse = (role, data) => {
@@ -368,170 +632,7 @@ function setupGroupWebSocket(options) {
                 }
 
                 if (roomState.isInterviewEnded) return;
-                // ==========================================
-                // 🔄 候選人完整回答後，檢查是否需要交接
-                // ==========================================
-                const tryStartHandover = (role, userText) => {
 
-                    const isTargetReached =
-                        (
-                            role === 'HR' &&
-                            roomState.hrRoundCount >=
-                            roomState.hrTargetRounds
-                        )
-                        ||
-                        (
-                            role === 'MANAGER' &&
-                            roomState.managerRoundCount >=
-                            roomState.managerTargetRounds
-                        );
-
-                    // ⭐ 交接前必須確認：這一題已經輪到最後一位應徵者
-                    const lastCandidate =
-                        candidatesList[candidatesList.length - 1];
-
-                    const isLastCandidateTurn =
-                        lastCandidate &&
-                        roomState.currentCandidateResumeId === lastCandidate.resumeId;
-
-                    const alreadyWrapping =
-                        role === 'HR'
-                            ? roomState.isHRWrappingUp
-                            : roomState.isManagerWrappingUp;
-
-                    if (
-                        !isTargetReached ||
-                        !isLastCandidateTurn ||
-                        alreadyWrapping ||
-                        roomState.isFinalStage ||
-                        roomState.aiPhaseFinished
-                    ) {
-                        return;
-                    }
-
-                    console.log(
-                        `🚀 [預先注入] ${role} 達到目標，準備交接`
-                    );
-
-                    // ⭐ 跟單人版一樣：
-                    // 一發現達標立刻進 wrapping，避免再計算下一題
-                    if (role === 'HR') {
-                        roomState.isHRWrappingUp = true;
-                        roomState.pendingHandover = 'HR_TO_MANAGER';
-                    } else {
-                        roomState.isManagerWrappingUp = true;
-                        roomState.pendingHandover = 'MANAGER_TO_HR';
-                    }
-
-                    const lastAiSpeech =
-                        role === 'HR'
-                            ? roomState.hrSpeechBuffer
-                            : roomState.managerSpeechBuffer;
-
-                    // ⭐ 抓 Gemini 剛才最後正在形成的那一小段
-                    // 不再硬塞「這確實很有價值。」
-                    const cleanLastSpeech =
-                        lastAiSpeech
-                            .split(/[。！？]/)
-                            .map(s => s.trim())
-                            .filter(s => s.length > 2)
-                            .pop()
-                        || "";
-
-                    console.log(
-                        `🧩 [交接] ${role} 剛才最後語意：`,
-                        cleanLastSpeech || "(沒有可承接內容)"
-                    );
-
-                    // ⭐ 有半句 → 告訴 Gemini 順著半句轉彎
-                    // 沒半句 → 直接做正常簡短總結
-                    const contextLine =
-                        cleanLastSpeech
-                            ? `你剛剛正在說：「${cleanLastSpeech}」。
-                            這段可能只是尚未完成的半句。
-                            請直接順著這段語意自然轉成陳述式收尾，
-                            不要重新朗讀這段文字，也不要把原本的問題繼續問完。`
-                            : `你剛剛尚未開始新的完整發言。
-                            請直接針對應徵者的回答，給一句自然、簡短的總結回饋。`;
-
-                    // ⭐ 跟單人版一樣清掉舊 buffer
-                    if (role === 'HR') {
-
-                        if (roomState.hrFlushTimeout) {
-                            clearTimeout(roomState.hrFlushTimeout);
-                            roomState.hrFlushTimeout = null;
-                        }
-
-                        roomState.hrSpeechBuffer = "";
-
-                    } else {
-
-                        if (roomState.managerFlushTimeout) {
-                            clearTimeout(roomState.managerFlushTimeout);
-                            roomState.managerFlushTimeout = null;
-                        }
-
-                        roomState.managerSpeechBuffer = "";
-                    }
-
-                    const handoverLine =
-                        role === 'HR'
-                            ? HR_HANDOVER_SENTENCE
-                            : MANAGER_HANDOVER_SENTENCE;
-
-                    const injectionPrompt = `
-                    [系統核心指令]
-
-                    應徵者目前的回答：
-                    "${userText}"
-
-                    ${contextLine}
-
-                    你的任務只有兩件事：
-
-                    1. 自然、簡短地完成目前這段收尾。
-                    不可以再提出任何問題。
-                    不可以重新開始一個新問題。
-
-                    2. 收尾後，【必須】立即逐字朗讀：
-                    「${handoverLine}」
-
-                    說完交接句後立即停止發言。
-                `;
-
-                    const injectionMsg = {
-                        clientContent: {
-                            turns: [{
-                                role: "user",
-                                parts: [{
-                                    text: injectionPrompt
-                                }]
-                            }],
-                            turnComplete: true
-                        }
-                    };
-
-                    // ⭐ 防止候選人聲音在交接期間又灌進 Gemini
-                    roomState.isAiSpeaking = true;
-
-                    if (
-                        role === 'HR' &&
-                        roomState.hrWs?.readyState === WebSocket.OPEN
-                    ) {
-                        roomState.hrWs.send(
-                            JSON.stringify(injectionMsg)
-                        );
-                    }
-
-                    if (
-                        role === 'MANAGER' &&
-                        roomState.managerWs?.readyState === WebSocket.OPEN
-                    ) {
-                        roomState.managerWs.send(
-                            JSON.stringify(injectionMsg)
-                        );
-                    }
-                };
 
                 if (response.setupComplete && role === 'HR') {
 
@@ -643,33 +744,8 @@ function setupGroupWebSocket(options) {
                     // ⭐ 交接 injection 已成功中斷舊 turn
                     if (isThisRoleWrapping) {
 
-                        if (role === 'HR') {
-
-                            if (roomState.hrFlushTimeout) {
-                                clearTimeout(
-                                    roomState.hrFlushTimeout
-                                );
-
-                                roomState.hrFlushTimeout = null;
-                            }
-
-                            roomState.hrSpeechBuffer = "";
-
-                        } else {
-
-                            if (roomState.managerFlushTimeout) {
-                                clearTimeout(
-                                    roomState.managerFlushTimeout
-                                );
-
-                                roomState.managerFlushTimeout = null;
-                            }
-
-                            roomState.managerSpeechBuffer = "";
-                        }
-
                         console.log(
-                            `🧹 [交接] ${role} 舊 turn 已中斷，清除舊 transcription buffer`
+                            `🧹 [交接] ${role} 舊生成已中斷，保留已取得的逐字稿`
                         );
                     }
                     if (
@@ -695,10 +771,23 @@ function setupGroupWebSocket(options) {
                 }
                 // 處理語音轉文字邏輯
                 if (response.serverContent?.outputTranscription) {
+
+                    const outputText =
+                        response.serverContent.outputTranscription.text || '';
+
                     if (role === 'HR') {
-                        roomState.hrSpeechBuffer += response.serverContent.outputTranscription.text;
+
+                        // 原本逐字稿暫存，維持既有的 2 秒整理機制
+                        roomState.hrSpeechBuffer += outputText;
+
+                        // 獨立保存目前 AI 生成的完整文字
+                        roomState.hrCurrentTurnText += outputText;
+
                     } else {
-                        roomState.managerSpeechBuffer += response.serverContent.outputTranscription.text;
+
+                        roomState.managerSpeechBuffer += outputText;
+
+                        roomState.managerCurrentTurnText += outputText;
                     }
                     const currentSpeechBuffer = role === 'HR'
                         ? roomState.hrSpeechBuffer
@@ -742,19 +831,71 @@ function setupGroupWebSocket(options) {
                         }
                     }
                     
-                    if (
-                        mentionedCandidate &&
-                        roomState.currentCandidateResumeId !== mentionedCandidate.resumeId
-                    ) {
-                        roomState.currentCandidateResumeId =
-                            mentionedCandidate.resumeId;
 
-                        roomState.currentCandidateName =
-                            mentionedCandidate.name;
+                    if (mentionedCandidate) {
 
-                        console.log(
-                            `🎯 AI 正式點名 → ${mentionedCandidate.name} (${mentionedCandidate.resumeId})`
-                        );
+                        const firstCandidate = candidatesList[0];
+
+                        const isFirstCandidate =
+                            firstCandidate &&
+                            mentionedCandidate.resumeId === firstCandidate.resumeId;
+
+                        const awaitingKey = role === 'HR'
+                            ? 'hrRoundAwaitingNextStart'
+                            : 'managerRoundAwaitingNextStart';
+
+                        const answeredSet = role === 'HR'
+                            ? roomState.hrRoundAnswered
+                            : roomState.managerRoundAnswered;
+
+                        const pendingNextKey = role === 'HR'
+                            ? 'hrPendingNextRoundStart'
+                            : 'managerPendingNextRoundStart';
+
+                        // AI 正式開始新一輪，重新點名第一位
+                        if (
+                            isFirstCandidate &&
+                            roomState[awaitingKey]
+                        ) {
+
+                            // 如果上一位應徵者的最終轉錄還沒抵達
+                            // 暫時不要清除上一輪的 Set
+                            if (roomState.userSpeechCandidateResumeId) {
+
+                                roomState[pendingNextKey] = true;
+
+                                console.log(
+                                    `⏳ [${role}] 等待上一位應徵者的最終轉錄`
+                                );
+
+                            } else {
+
+                                answeredSet.clear();
+
+                                roomState[awaitingKey] = false;
+                                roomState[pendingNextKey] = false;
+
+                                console.log(
+                                    `🔄 [${role}] 新一輪開始，重置回答名單`
+                                );
+                            }
+                        }
+
+                        if (
+                            roomState.currentCandidateResumeId !==
+                            mentionedCandidate.resumeId
+                        ) {
+
+                            roomState.currentCandidateResumeId =
+                                mentionedCandidate.resumeId;
+
+                            roomState.currentCandidateName =
+                                mentionedCandidate.name;
+
+                            console.log(
+                                `🎯 AI 正式點名 → ${mentionedCandidate.name} (${mentionedCandidate.resumeId})`
+                            );
+                        }
                     }
 
                     // 1. 取得對應的舊計時器並直接清除
@@ -803,48 +944,19 @@ function setupGroupWebSocket(options) {
                                 }
                             });
 
-                            if (
-                                role === 'HR' &&
-                                roomState.currentInterviewer === 'HR' &&
-                                !roomState.isHRWrappingUp
-                            ) {
-                                const isRealQuestion =
-                                    (finalSentence.includes('？') || finalSentence.includes('?')) && finalSentence.length > 10;
-
-                                if (isRealQuestion) {
-                                    roomState.hrRoundCount++;
-
-                                    console.log(
-                                        `📊 HR 題數：${roomState.hrRoundCount}`
-                                    );
-                                }
-                            }
-                            if (
-                                role === 'MANAGER' &&
-                                roomState.currentInterviewer === 'MANAGER' &&
-                                !roomState.isManagerWrappingUp
-                            ) {
-                                const isRealQuestion =
-                                    (finalSentence.includes('？') || finalSentence.includes('?')) && finalSentence.length > 10;
-
-                                if (isRealQuestion) {
-                                    roomState.managerRoundCount++;
-
-                                    console.log(
-                                        `📊 主管題數：${roomState.managerRoundCount}`
-                                    );
-                                }
-                            }
-
                             // ==========================================
                             // 🔄 HR → 部門主管
                             // ==========================================
                             if (
                                 role === 'HR' &&
-                                roomState.currentInterviewer === 'HR'
+                                roomState.currentInterviewer === 'HR' &&
+                                roomState.isHRWrappingUp &&
+                                roomState.pendingHandover === 'HR_TO_MANAGER'
                             ) {
-                                const normalizedHandoverText = finalSentence.replace(/[，。！？、,.!?]/g, '');
-
+                                const normalizedHandoverText =
+                                    roomState.hrCurrentTurnText
+                                        .replace(/[，。！？、,.!?]/g, '')
+                                        .replace(/\s/g, '');
                                 // 🌟 放寬交接判定：只要有「交給」或「交接」，且提到「主管」就算數
                                 const hasHrHandover =
                                     (normalizedHandoverText.includes('交給') || normalizedHandoverText.includes('交接')) &&
@@ -935,8 +1047,7 @@ function setupGroupWebSocket(options) {
 
                                                         realtimeInputConfig: {
                                                             automaticActivityDetection: {
-                                                                silenceDurationMs: 3000
-                                                            }
+                                                                silenceDurationMs: ANSWER_SILENCE_MS                                                            }
                                                         }
                                                     }
                                                 }));
@@ -1014,8 +1125,10 @@ function setupGroupWebSocket(options) {
                                 roomState.pendingHandover === 'MANAGER_TO_HR' &&
                                 roomState.currentInterviewer === 'MANAGER'
                             ) {
-                                const normalizedHandoverText = finalSentence.replace(/[，。！？、,.!?]/g, '');
-
+                                const normalizedHandoverText =
+                                    roomState.managerCurrentTurnText
+                                        .replace(/[，。！？、,.!?]/g, '')
+                                        .replace(/\s/g, '');
                                 // 🌟 放寬交接判定：只要有「交還」、「交給」或「交接」，且提到「人資」就算數
                                 const hasManagerHandover =
                                     (normalizedHandoverText.includes('交還') || normalizedHandoverText.includes('交給') || normalizedHandoverText.includes('交接')) &&
@@ -1089,109 +1202,74 @@ function setupGroupWebSocket(options) {
 
                     if (role === 'HR') roomState.hrFlushTimeout = newTimeout; else roomState.managerFlushTimeout = newTimeout;
                 }
-                // ==========================================
-                // 👤 應徵者語音轉文字 → 傳到前端即時對話紀錄
-                // ==========================================
+
                 if (
                     response.serverContent?.inputTranscription &&
                     roomState.currentInterviewer === role
                 ) {
-                    const partialText =
-                        response.serverContent.inputTranscription.text || "";
 
-                    if (partialText) {
+                    // Gemini 已完成這個語音片段的最終轉錄
+                    const finalUserText = normalizeTranscript(
+                        response.serverContent.inputTranscription.text
+                    );
 
-                        // ⭐ 這一段逐字稿第一次出現時，就把真正聲音來源鎖住
-                        // 後面即使 AI 已經點名下一個人，也不能改掉
-                        if (!roomState.userSpeechCandidateResumeId) {
-                            roomState.userSpeechCandidateResumeId =
-                                roomState.lastAudioCandidateResumeId;
+                    // 優先使用開始收音時鎖定的真正講話者
+                    const candidateResumeId =
+                        roomState.userSpeechCandidateResumeId ||
+                        roomState.lastAudioCandidateResumeId;
 
-                            roomState.userSpeechCandidateName =
-                                roomState.lastAudioCandidateName ||
-                                roomState.currentCandidateName ||
-                                '應徵者';
+                    const candidate = candidatesList.find(
+                        c => c.resumeId === candidateResumeId
+                    );
 
-                            console.log(
-                                `🎙️ 逐字稿來源鎖定 → ${roomState.userSpeechCandidateName}`
-                            );
-                        }
+                    const candidateName =
+                        roomState.userSpeechCandidateName ||
+                        candidate?.name ||
+                        roomState.lastAudioCandidateName ||
+                        '應徵者';
 
-                        roomState.userSpeechBuffer += partialText;
+                    if (finalUserText) {
 
-                        const immediateUserText =
-                            convert(partialText)
-                                .replace(
-                                    /([\u3400-\u9FFF])\s+(?=[\u3400-\u9FFF])/g,
-                                    '$1'
-                                )
-                                .replace(
-                                    /\s+([，。！？、,.!?])/g,
-                                    '$1'
-                                )
-                                .trim();
+                        console.log(
+                            `👤 [${candidateName}] ${finalUserText}`
+                        );
 
-                        if (immediateUserText) {
-                            tryStartHandover(
-                                role,
-                                immediateUserText
-                            );
-                        }
+                        // 保存應徵者回答
+                        addLog(
+                            roomState.sessionId,
+                            `candidate:${candidateName}`,
+                            finalUserText,
+                            'speech'
+                        );
 
-                        if (roomState.userFlushTimeout) {
-                            clearTimeout(roomState.userFlushTimeout);
-                        }
+                        // 廣播至應徵者端與 HR 戰情室
+                        const userMsg = JSON.stringify({
+                            customType: 'user_transcript',
+                            candidateName,
+                            text: finalUserText
+                        });
 
-                        roomState.userFlushTimeout = setTimeout(() => {
+                        wss.clients.forEach(c => {
+                            if (
+                                c.readyState === WebSocket.OPEN &&
+                                c.sessionId === roomState.sessionId
+                            ) {
+                                c.send(userMsg);
+                            }
+                        });
 
-                            const finalUserText = convert(
-                                roomState.userSpeechBuffer.trim()
-                            )
-                                .replace(/([\u3400-\u9FFF])\s+(?=[\u3400-\u9FFF])/g, '$1')
-                                .replace(/\s+([，。！？、,.!?])/g, '$1');
-
-                            // ⭐ 在清空前，先把這段真正的講話者存起來
-                            const speechCandidateName =
-                                roomState.userSpeechCandidateName ||
-                                roomState.lastAudioCandidateName ||
-                                '應徵者';
-
-                            roomState.userSpeechBuffer = "";
-
-                            // ⭐ 這段話結束，解除鎖定
-                            roomState.userSpeechCandidateResumeId = null;
-                            roomState.userSpeechCandidateName = null;
-
-                            if (!finalUserText) return;
-
-                            console.log(
-                                `👤 [${speechCandidateName}] ${finalUserText}`
-                            );
-
-                            addLog(
-                                roomState.sessionId,
-                                `candidate:${speechCandidateName}`,
-                                finalUserText,
-                                "speech"
-                            );
-
-                            const userMsg = JSON.stringify({
-                                customType: 'user_transcript',
-                                candidateName: speechCandidateName,
-                                text: finalUserText
-                            });
-
-                            wss.clients.forEach(c => {
-                                if (
-                                    c.readyState === WebSocket.OPEN &&
-                                    c.sessionId === roomState.sessionId
-                                ) {
-                                    c.send(userMsg);
-                                }
-                            });
-
-                        }, 1800);
+                        // ⭐ 完成回答後才計算輪次
+                        markCandidateAnswerCompleted(
+                            role,
+                            candidateResumeId,
+                            finalUserText
+                        );
                     }
+
+                    // 最終轉錄已處理，解除說話者鎖定
+                    roomState.userSpeechBuffer = '';
+                    roomState.userSpeechCandidateResumeId = null;
+                    roomState.userSpeechCandidateName = null;
                 }
                 // ⭐ 只有目前真正掌權的 AI
                 // 才能結束自己的 speaking 狀態
@@ -1396,7 +1474,12 @@ function setupGroupWebSocket(options) {
                                 room.lastAudioCandidateResumeId = clientWs.resumeId;
                                 room.lastAudioCandidateName =
                                     clientWs.candidateName || room.currentCandidateName;
-
+                                // 新應徵者開始回答，重置 AI 針對本次回答的生成文字
+                                if (room.currentInterviewer === 'HR') {
+                                    room.hrCurrentTurnText = '';
+                                } else if (room.currentInterviewer === 'MANAGER') {
+                                    room.managerCurrentTurnText = '';
+                                }
                                 // ⭐ 這一段回答一開始就把說話者鎖死
                                 if (!room.userSpeechCandidateResumeId) {
                                     room.userSpeechCandidateResumeId = clientWs.resumeId;
