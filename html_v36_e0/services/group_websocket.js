@@ -1203,73 +1203,116 @@ function setupGroupWebSocket(options) {
                     if (role === 'HR') roomState.hrFlushTimeout = newTimeout; else roomState.managerFlushTimeout = newTimeout;
                 }
 
+                // ==========================================
+                // 👤 應徵者語音轉文字 → 累積完整回答
+                // ==========================================
                 if (
                     response.serverContent?.inputTranscription &&
                     roomState.currentInterviewer === role
                 ) {
+                    const partialText =
+                        response.serverContent.inputTranscription.text || '';
 
-                    // Gemini 已完成這個語音片段的最終轉錄
-                    const finalUserText = normalizeTranscript(
-                        response.serverContent.inputTranscription.text
-                    );
+                    if (partialText) {
 
-                    // 優先使用開始收音時鎖定的真正講話者
-                    const candidateResumeId =
-                        roomState.userSpeechCandidateResumeId ||
-                        roomState.lastAudioCandidateResumeId;
+                        // 第一次收到逐字稿時，鎖定真正的應徵者
+                        if (!roomState.userSpeechCandidateResumeId) {
 
-                    const candidate = candidatesList.find(
-                        c => c.resumeId === candidateResumeId
-                    );
+                            roomState.userSpeechCandidateResumeId =
+                                roomState.lastAudioCandidateResumeId ||
+                                roomState.currentCandidateResumeId;
 
-                    const candidateName =
-                        roomState.userSpeechCandidateName ||
-                        candidate?.name ||
-                        roomState.lastAudioCandidateName ||
-                        '應徵者';
+                            const lockedCandidate = candidatesList.find(
+                                c => c.resumeId === roomState.userSpeechCandidateResumeId
+                            );
 
-                    if (finalUserText) {
+                            roomState.userSpeechCandidateName =
+                                roomState.lastAudioCandidateName ||
+                                lockedCandidate?.name ||
+                                roomState.currentCandidateName ||
+                                '應徵者';
 
-                        console.log(
-                            `👤 [${candidateName}] ${finalUserText}`
-                        );
+                            console.log(
+                                `🎙️ 逐字稿來源鎖定 → ${roomState.userSpeechCandidateName}`
+                            );
+                        }
 
-                        // 保存應徵者回答
-                        addLog(
-                            roomState.sessionId,
-                            `candidate:${candidateName}`,
-                            finalUserText,
-                            'speech'
-                        );
+                        // 累積 Gemini 傳來的逐字稿片段
+                        roomState.userSpeechBuffer += partialText;
 
-                        // 廣播至應徵者端與 HR 戰情室
-                        const userMsg = JSON.stringify({
-                            customType: 'user_transcript',
-                            candidateName,
-                            text: finalUserText
-                        });
+                        // 每次收到新片段，就重新計算 1.8 秒
+                        if (roomState.userFlushTimeout) {
+                            clearTimeout(roomState.userFlushTimeout);
+                        }
 
-                        wss.clients.forEach(c => {
-                            if (
-                                c.readyState === WebSocket.OPEN &&
-                                c.sessionId === roomState.sessionId
-                            ) {
-                                c.send(userMsg);
-                            }
-                        });
+                        roomState.userFlushTimeout = setTimeout(() => {
 
-                        // ⭐ 完成回答後才計算輪次
-                        markCandidateAnswerCompleted(
-                            role,
-                            candidateResumeId,
-                            finalUserText
-                        );
+                            // 先取得完整回答與應徵者身分
+                            const finalUserText = normalizeTranscript(
+                                roomState.userSpeechBuffer
+                            );
+
+                            const candidateResumeId =
+                                roomState.userSpeechCandidateResumeId ||
+                                roomState.lastAudioCandidateResumeId ||
+                                roomState.currentCandidateResumeId;
+
+                            const candidate = candidatesList.find(
+                                c => c.resumeId === candidateResumeId
+                            );
+
+                            const candidateName =
+                                roomState.userSpeechCandidateName ||
+                                candidate?.name ||
+                                roomState.lastAudioCandidateName ||
+                                roomState.currentCandidateName ||
+                                '應徵者';
+
+                            // 清理暫存
+                            roomState.userSpeechBuffer = '';
+                            roomState.userSpeechCandidateResumeId = null;
+                            roomState.userSpeechCandidateName = null;
+                            roomState.userFlushTimeout = null;
+
+                            if (!finalUserText) return;
+
+                            console.log(
+                                `👤 [${candidateName}] ${finalUserText}`
+                            );
+
+                            // 儲存逐字稿
+                            addLog(
+                                roomState.sessionId,
+                                `candidate:${candidateName}`,
+                                finalUserText,
+                                'speech'
+                            );
+
+                            // 廣播至所有前端
+                            const userMsg = JSON.stringify({
+                                customType: 'user_transcript',
+                                candidateName,
+                                text: finalUserText
+                            });
+
+                            wss.clients.forEach(c => {
+                                if (
+                                    c.readyState === WebSocket.OPEN &&
+                                    c.sessionId === roomState.sessionId
+                                ) {
+                                    c.send(userMsg);
+                                }
+                            });
+
+                            // ⭐ 確定回答結束後，才計算團體面試輪次
+                            markCandidateAnswerCompleted(
+                                role,
+                                candidateResumeId,
+                                finalUserText
+                            );
+
+                        }, 1800);
                     }
-
-                    // 最終轉錄已處理，解除說話者鎖定
-                    roomState.userSpeechBuffer = '';
-                    roomState.userSpeechCandidateResumeId = null;
-                    roomState.userSpeechCandidateName = null;
                 }
                 // ⭐ 只有目前真正掌權的 AI
                 // 才能結束自己的 speaking 狀態
