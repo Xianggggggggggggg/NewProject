@@ -1466,25 +1466,32 @@ function setupGroupWebSocket(options) {
                             else if (room.currentInterviewer === 'MANAGER') targetWs = room.managerWs;
 
                             // ⭐ 只有「真的正在講話」的音訊，才記錄這個人的身分
+
                             if (
                                 clientWs.clientType === 'candidate' &&
                                 parsedMsg.realtimeInput.audio &&
                                 parsedMsg.speakerActive === true
                             ) {
+
                                 room.lastAudioCandidateResumeId = clientWs.resumeId;
+
                                 room.lastAudioCandidateName =
                                     clientWs.candidateName || room.currentCandidateName;
-                                // 新應徵者開始回答，重置 AI 針對本次回答的生成文字
-                                if (room.currentInterviewer === 'HR') {
-                                    room.hrCurrentTurnText = '';
-                                } else if (room.currentInterviewer === 'MANAGER') {
-                                    room.managerCurrentTurnText = '';
-                                }
-                                // ⭐ 這一段回答一開始就把說話者鎖死
+
+                                // 只有新的回答開始時，才執行一次
                                 if (!room.userSpeechCandidateResumeId) {
+
                                     room.userSpeechCandidateResumeId = clientWs.resumeId;
+
                                     room.userSpeechCandidateName =
                                         clientWs.candidateName || room.currentCandidateName;
+
+                                    // 新回答開始，重置上一輪 AI 回應文字
+                                    if (room.currentInterviewer === 'HR') {
+                                        room.hrCurrentTurnText = '';
+                                    } else if (room.currentInterviewer === 'MANAGER') {
+                                        room.managerCurrentTurnText = '';
+                                    }
 
                                     console.log(
                                         `🎙️ 真正開始收音 → ${room.userSpeechCandidateName}`
