@@ -165,15 +165,13 @@ function setupGroupWebSocket(options) {
             // 不受原本逐字稿 2 秒整理機制影響
             roomState.hrCurrentTurnText = '';
             roomState.managerCurrentTurnText = '';
-            // 題目歷史：HR 與主管分開記錄
-            roomState.questionHistory = {
-                HR: [],
-                MANAGER: []
-            };
-            // 標記目前 AI 這次發言是否正在提出「新題目」
-            // 避免同一題點名下一位候選人時，被重複記錄
-            roomState.hrExpectingNewQuestion = false;
-            roomState.managerExpectingNewQuestion = false;
+            // 保存候選人開始回答前，面試官最後一段完整發言
+            roomState.hrLastQuestionText = '';
+            roomState.managerLastQuestionText = '';
+
+            // 追蹤被中斷的 AI 回合，避免舊逐字稿混入新回覆
+            roomState.hrDiscardingInterruptedTurn = false;
+            roomState.managerDiscardingInterruptedTurn = false;
 
             // (Prompt 設定維持原樣...)
             const candidatesNamesStr = candidatesList.map(c => c.name).join('、');
@@ -341,7 +339,8 @@ function setupGroupWebSocket(options) {
 
                             realtimeInputConfig: {
                                 automaticActivityDetection: {
-                                    silenceDurationMs: ANSWER_SILENCE_MS                                }
+                                    silenceDurationMs: ANSWER_SILENCE_MS
+                                }
                             }
                         }
                     }));
@@ -381,7 +380,8 @@ function setupGroupWebSocket(options) {
 
                         realtimeInputConfig: {
                             automaticActivityDetection: {
-                                silenceDurationMs: ANSWER_SILENCE_MS                            }
+                                silenceDurationMs: ANSWER_SILENCE_MS
+                            }
                         }
                     }
                 }));
@@ -398,7 +398,8 @@ function setupGroupWebSocket(options) {
 
                         realtimeInputConfig: {
                             automaticActivityDetection: {
-                                silenceDurationMs: ANSWER_SILENCE_MS                            }
+                                silenceDurationMs: ANSWER_SILENCE_MS
+                            }
                         }
                     }
                 }));
@@ -413,79 +414,7 @@ function setupGroupWebSocket(options) {
                     .replace(/\s+([，。！？、,.!?])/g, '$1')
                     .trim();
             };
-            // ==========================================
-            // 題目歷史管理
-            // ==========================================
 
-            // 將目前 AI 這次發言整理成題目文字
-            const extractQuestionFromTurn = (text) => {
-                let question = normalizeTranscript(text);
-
-                if (!question) return '';
-
-                // 移除最後的候選人點名句
-                // 例如：現在請王小明回答。
-                question = question.split(/現在請.{1,20}回答/)[0];
-
-                // 移除前後空白
-                question = question.trim();
-
-                // 移除過多的空白
-                question = question.replace(/\s+/g, '');
-
-                return question;
-            };
-
-
-            // 將已問過的題目整理成文字，提供給 Gemini 參考
-            const formatQuestionHistory = (role) => {
-                const history = roomState.questionHistory?.[role] || [];
-
-                if (history.length === 0) {
-                    return '目前尚無已完成的面試題目。';
-                }
-
-                return history.map((item, index) =>
-                    `${index + 1}. ${item.question}`
-                ).join('\n');
-            };
-
-
-            // 將新題目加入歷史紀錄
-            const recordQuestionFromTurn = (role) => {
-
-                const isHR = role === 'HR';
-
-                const text = isHR
-                    ? roomState.hrCurrentTurnText
-                    : roomState.managerCurrentTurnText;
-
-                const question = extractQuestionFromTurn(text);
-
-                if (!question || question.length < 5) {
-                    console.warn(`⚠️ [${role}] 無法取得有效題目，暫不加入歷史`);
-                    return;
-                }
-
-                const history = roomState.questionHistory[role];
-
-                // 避免同一題被重複記錄
-                const alreadyExists = history.some(item =>
-                    item.question === question
-                );
-
-                if (alreadyExists) {
-                    console.log(`ℹ️ [${role}] 題目已存在，不重複加入`);
-                    return;
-                }
-
-                history.push({
-                    round: history.length + 1,
-                    question
-                });
-
-                console.log(`📝 [${role}] 已記錄新題目：${question}`);
-            };
             const beginHandover = (role, finalUserText = '') => {
 
                 const isHR = role === 'HR';
@@ -522,10 +451,9 @@ function setupGroupWebSocket(options) {
                     ? 'HR_TO_MANAGER'
                     : 'MANAGER_TO_HR';
 
-                // 取出 AI 目前已生成的文字
                 const lastAiSpeech = isHR
-                    ? roomState.hrCurrentTurnText
-                    : roomState.managerCurrentTurnText;
+                    ? roomState.hrLastQuestionText
+                    : roomState.managerLastQuestionText;
 
                 const cleanLastSpeech = lastAiSpeech
                     .split(/[。！？]/)
@@ -599,32 +527,106 @@ function setupGroupWebSocket(options) {
             // ==========================================
             // 後端控制 AI 下一步發言
             // ==========================================
-            const sendNextInterviewerInstruction = (role, instruction) => {
-                const targetWs = role === 'HR'
+            // ==========================================
+            // 後端直接中斷舊生成，送出新的面試指令
+            // ==========================================
+            const sendNextInterviewerInstruction = (
+                role,
+                instruction,
+                finalUserText = ''
+            ) => {
+
+                const isHR = role === 'HR';
+
+                const targetWs = isHR
                     ? roomState.hrWs
                     : roomState.managerWs;
 
                 if (!targetWs || targetWs.readyState !== WebSocket.OPEN) {
-                    console.error(`❌ [${role}] 無法派發下一步指令：連線未開啟`);
-                    return;
+                    console.error(`❌ [${role}] 無法派發指令：連線未開啟`);
+                    return false;
                 }
 
-                // 每次新指令開始前，清空上一輪 AI 生成文字
-                if (role === 'HR') {
-                    roomState.hrCurrentTurnText = '';
-                } else {
-                    roomState.managerCurrentTurnText = '';
-                }
+                const lastQuestion = isHR
+                    ? roomState.hrLastQuestionText
+                    : roomState.managerLastQuestionText;
 
+                const candidateAnswer = String(
+                    finalUserText || ''
+                ).trim();
+
+                // 整理前情，讓 Gemini 知道剛才發生什麼事
+                const conversationContext = `
+【前一段面試對話紀錄】
+
+${lastQuestion
+                        ? `面試官上一段發言：
+「${lastQuestion}」`
+                        : '面試官前面的提問已保留在原本的對話上下文中。'}
+
+${candidateAnswer
+                        ? `候選人剛才的回答逐字稿：
+「${candidateAnswer}」
+
+注意：這是剛才語音回答的文字紀錄，不是候選人再次回答。`
+                        : ''}
+
+【被中斷的生成處理規則】
+
+如果你剛才已經自行開始產生回饋，
+請將那段未完成內容視為無效草稿。
+
+不要延續那段回覆。
+不要重複朗讀。
+不要重新回答上一題。
+
+請直接依照以下新的後端指令執行。
+`;
+
+                const controlPrompt = `
+[後端流程控制指令]
+
+${conversationContext}
+
+【本次任務】
+
+${instruction}
+
+請嚴格遵守本次任務。
+`;
+
+                // 這次的新指令會中斷 Gemini 當前生成
                 roomState.isAiSpeaking = true;
 
-                targetWs.send(JSON.stringify({
-                    realtimeInput: {
-                        text: `[後端系統控制指令]\n${instruction}`
-                    }
-                }));
+                try {
 
-                console.log(`📨 [${role}] 後端已派發下一步指令`);
+                    targetWs.send(JSON.stringify({
+                        clientContent: {
+                            turns: [{
+                                role: 'user',
+                                parts: [{
+                                    text: controlPrompt
+                                }]
+                            }],
+                            turnComplete: true
+                        }
+                    }));
+
+                    console.log(
+                        `📨 [${role}] 已送出新的 clientContent，要求中斷舊生成並執行新指令`
+                    );
+
+                    return true;
+
+                } catch (err) {
+
+                    console.error(
+                        `❌ [${role}] 新指令派發失敗：`,
+                        err.message
+                    );
+
+                    return false;
+                }
             };
 
             // ==========================================
@@ -706,85 +708,28 @@ function setupGroupWebSocket(options) {
                 roomState.currentCandidateResumeId = firstCandidate.resumeId;
                 roomState.currentCandidateName = firstCandidate.name;
 
-
                 if (isIntroRound) {
-
-                    // HR 正式開始出題
-                    roomState.hrExpectingNewQuestion = true;
-
                     sendNextInterviewerInstruction(
                         role,
                         `現在開始正式面試。
-
-【已經問過的 HR 題目】
-${formatQuestionHistory('HR')}
-
-請根據應徵者履歷、職缺需求與企業背景，
-提出第一個新的 HR 面試問題。
-
-【避免重複提問】
-不得重複上述已問過的題目。
-可以延伸先前題目的不同面向，但必須有新的核心問題。
-
+請提出第一個新的 HR 面試問題。
 提出問題後，最後一句必須逐字說：
 「現在請${firstCandidate.name}回答。」
-
-一次只能提出一個問題，之後等待候選人回答。`
+一次只能提出一個問題，之後等待候選人回答。`,
+                        finalUserText
                     );
 
                 } else {
 
-                    // 依照目前的面試官角色，設定對應的題目歷史
-                    if (isHR) {
-
-                        roomState.hrExpectingNewQuestion = true;
-
-                        sendNextInterviewerInstruction(
-                            role,
-                            `上一題已經由所有應徵者依序回答完畢。
-
-【已經問過的 HR 題目】
-${formatQuestionHistory('HR')}
-
-現在請提出下一個新的 HR 面試問題。
-
-【避免重複提問】
-不得重複上述已問過的題目。
-請從不同面向深入了解應徵者，不要只是換句話說重問同一題。
-
+                    sendNextInterviewerInstruction(
+                        role,
+                        `上一題已經由所有應徵者依序回答完畢。
+現在請提出下一個新的${isHR ? 'HR' : '專業技術'}面試問題。
 提出問題後，最後一句必須逐字說：
 「現在請${firstCandidate.name}回答。」
-
-一次只能提出一個問題，之後等待候選人回答。`
-                        );
-
-                    } else {
-
-                        roomState.managerExpectingNewQuestion = true;
-
-                        sendNextInterviewerInstruction(
-                            role,
-                            `上一題已經由所有應徵者依序回答完畢。
-
-【HR 階段已經問過的題目】
-${formatQuestionHistory('HR')}
-
-【主管階段已經問過的題目】
-${formatQuestionHistory('MANAGER')}
-
-請參考前面 HR 與主管已經問過的題目，避免重複。
-
-現在請提出下一個新的技術面試問題。
-請著重在專業知識、技術應用或實務問題，不要直接重複 HR 已經問過的內容。
-
-提出問題後，最後一句必須逐字說：
-「現在請${firstCandidate.name}回答。」
-
-一次只能提出一個問題，之後等待候選人回答。`
-                        );
-                    }
-                }
-
+一次只能提出一個問題，之後等待候選人回答。`,
+                        finalUserText
+                    );                }
             };
 
 
@@ -882,9 +827,9 @@ ${formatQuestionHistory('MANAGER')}
 不要提出新的問題，也不要改變原本的問題。
 請直接簡短銜接，最後一句必須逐字說：
 「現在請${nextCandidate.name}回答。」
-說完後等待這位應徵者回答。`
+說完後等待這位應徵者回答。`,
+                        finalUserText
                     );
-
                     return;
                 }
 
@@ -1011,56 +956,71 @@ ${formatQuestionHistory('MANAGER')}
                 }
 
                 if (response.serverContent?.interrupted) {
-                    if (roomState.currentInterviewer === role) {
-                        roomState.isAiSpeaking = false;
 
-                        console.log(
-                            `⏸️ [${role}] Gemini 生成遭中斷，已解除 AI 發言鎖定`
-                        );
+                    const isHR = role === 'HR';
+
+                    const discardKey = isHR
+                        ? 'hrDiscardingInterruptedTurn'
+                        : 'managerDiscardingInterruptedTurn';
+
+                    const bufferKey = isHR
+                        ? 'hrSpeechBuffer'
+                        : 'managerSpeechBuffer';
+
+                    const timeoutKey = isHR
+                        ? 'hrFlushTimeout'
+                        : 'managerFlushTimeout';
+
+                    const currentTurnKey = isHR
+                        ? 'hrCurrentTurnText'
+                        : 'managerCurrentTurnText';
+
+                    // 標記舊生成已被中斷
+                    roomState[discardKey] = true;
+
+                    // 清除舊生成的未完成逐字稿
+                    if (roomState[timeoutKey]) {
+                        clearTimeout(roomState[timeoutKey]);
                     }
 
-                    const isThisRoleWrapping =
-                        (
-                            role === 'HR' &&
-                            roomState.isHRWrappingUp
-                        )
-                        ||
-                        (
-                            role === 'MANAGER' &&
-                            roomState.isManagerWrappingUp
-                        );
+                    roomState[timeoutKey] = null;
+                    roomState[bufferKey] = '';
+                    roomState[currentTurnKey] = '';
 
-                    // ⭐ 交接 injection 已成功中斷舊 turn
-                    if (isThisRoleWrapping) {
+                    console.log(
+                        `🧹 [${role}] 舊生成已中斷，丟棄未完成逐字稿`
+                    );
 
-                        console.log(
-                            `🧹 [交接] ${role} 舊生成已中斷，保留已取得的逐字稿`
-                        );
-                    }
-                    if (
-                        roomState.currentInterviewer === role &&
-                        !response.serverContent?.modelTurn?.parts
-                    ) {
+                    // 一律通知前端清空舊 AI 音訊播放佇列
+                    const interruptedMsg = JSON.stringify({
+                        ...response,
+                        ai_role: role
+                    });
 
-                        const interruptedMsg = JSON.stringify({
-                            ...JSON.parse(data.toString()),
-                            ai_role: role
-                        });
+                    wss.clients.forEach(c => {
 
-                        wss.clients.forEach(c => {
+                        if (
+                            c.readyState === WebSocket.OPEN &&
+                            c.sessionId === roomState.sessionId
+                        ) {
+                            c.send(interruptedMsg);
+                        }
+                    });
+                }                // 處理語音轉文字邏輯
+                const discardKey = role === 'HR'
+                    ? 'hrDiscardingInterruptedTurn'
+                    : 'managerDiscardingInterruptedTurn';
 
-                            if (
-                                c.readyState === WebSocket.OPEN &&
-                                c.sessionId === roomState.sessionId
-                            ) {
-                                c.send(interruptedMsg);
-                            }
-                        });
-                    }
-                }
-                // 處理語音轉文字邏輯
-                if (response.serverContent?.outputTranscription) {
+                if (
+                    response.serverContent?.outputTranscription &&
+                    roomState[discardKey]
+                ) {
 
+                    console.log(
+                        `🧹 [${role}] 忽略被中斷回合的舊逐字稿`
+                    );
+
+                } else if (response.serverContent?.outputTranscription) {
                     const outputText =
                         response.serverContent.outputTranscription.text || '';
 
@@ -1082,7 +1042,7 @@ ${formatQuestionHistory('MANAGER')}
                         ? roomState.hrSpeechBuffer
                         : roomState.managerSpeechBuffer;
 
-                    
+
 
                     // 1. 取得對應的舊計時器並直接清除
                     const currentTimeout = role === 'HR' ? roomState.hrFlushTimeout : roomState.managerFlushTimeout;
@@ -1171,7 +1131,6 @@ ${formatQuestionHistory('MANAGER')}
                                         roomState.currentCandidateName =
                                             firstCandidate.name;
 
-
                                         if (
                                             roomState.managerWs &&
                                             roomState.managerWs.readyState === WebSocket.OPEN
@@ -1179,37 +1138,19 @@ ${formatQuestionHistory('MANAGER')}
                                             console.log(
                                                 "👨‍💻 [權限切換] 部門主管正式接手"
                                             );
-
-                                            roomState.managerExpectingNewQuestion = true;
                                             roomState.isAiSpeaking = true;
 
                                             roomState.managerWs.send(JSON.stringify({
                                                 realtimeInput: {
-                                                    text: `[後端系統控制指令]
-
-HR 已經正式交棒給你。
-
-【HR 階段已經問過的題目】
-${formatQuestionHistory('HR')}
-
-【主管階段已經問過的題目】
-${formatQuestionHistory('MANAGER')}
-
-請參考 HR 階段的題目，避免重複詢問相同內容。
-
-現在請立刻開始技術面試，提出第一個完整的技術問題。
-問題必須與「${position}」職缺、應徵者履歷或實際技術能力相關。
-
-【避免重複提問】
-不得直接重複 HR 已經問過的題目。
-請著重在專業知識、技術應用或實務問題。
-
-問題說完後，最後一句必須逐字說：
-「現在請${firstCandidate.name}回答。」`
+                                                    text: `HR 已經正式交棒給你。
+                                                        請立刻開始技術面試，提出第一個完整的技術問題。
+                                                        問題必須與「${position}」職缺、應徵者履歷或實際技術能力相關。
+                                                        問題說完後，最後一句必須逐字說：
+                                                        「現在請${firstCandidate.name}回答。」`
                                                 }
                                             }));
-                                        }
-else {
+
+                                        } else {
                                             console.warn(
                                                 "⚠️ Manager WebSocket 非 OPEN，重新建立主管連線",
                                                 roomState.managerWs?.readyState
@@ -1252,7 +1193,8 @@ else {
 
                                                         realtimeInputConfig: {
                                                             automaticActivityDetection: {
-                                                                silenceDurationMs: ANSWER_SILENCE_MS                                                            }
+                                                                silenceDurationMs: ANSWER_SILENCE_MS
+                                                            }
                                                         }
                                                     }
                                                 }));
@@ -1281,34 +1223,18 @@ else {
                                                         data => handleAiResponse('MANAGER', data)
                                                     );
 
-                                                    roomState.managerExpectingNewQuestion = true;
                                                     roomState.isAiSpeaking = true;
 
                                                     newManagerWs.send(JSON.stringify({
                                                         realtimeInput: {
-                                                            text: `[後端系統控制指令]
-
-HR 已經正式交棒給你。
-
-【HR 階段已經問過的題目】
-${formatQuestionHistory('HR')}
-
-【主管階段已經問過的題目】
-${formatQuestionHistory('MANAGER')}
-
-請參考 HR 階段的題目，避免重複詢問相同內容。
-
-現在請立刻開始技術面試，提出第一個完整的技術問題。
+                                                            text: `HR 已經正式交棒給你。
+請立刻開始技術面試，提出第一個完整的技術問題。
 問題必須與「${position}」職缺、應徵者履歷或實際技術能力相關。
-
-【避免重複提問】
-不得直接重複 HR 已經問過的題目。
-請著重在專業知識、技術應用或實務問題。
-
 問題說完後，最後一句必須逐字說：
 「現在請${firstCandidate.name}回答。」`
                                                         }
-                                                    }));                                                }
+                                                    }));
+                                                }
                                             };
 
                                             newManagerWs.on(
@@ -1535,31 +1461,25 @@ ${formatQuestionHistory('MANAGER')}
                         }, 1800);
                     }
                 }
-                // ⭐ 只有目前真正掌權的 AI
-                // 才能結束自己的 speaking 狀態
-                if (
-                    response.serverContent?.turnComplete &&
-                    roomState.currentInterviewer === role
-                ) {
+                if (response.serverContent?.turnComplete) {
 
-                    // 只有後端事先標記為「新題目」的發言才記錄
-                    if (
-                        role === 'HR' &&
-                        roomState.hrExpectingNewQuestion
-                    ) {
-                        recordQuestionFromTurn('HR');
-                        roomState.hrExpectingNewQuestion = false;
+                    const discardKey = role === 'HR'
+                        ? 'hrDiscardingInterruptedTurn'
+                        : 'managerDiscardingInterruptedTurn';
+
+                    // 如果這次 turnComplete 是舊生成被中斷後的結束通知
+                    if (roomState[discardKey]) {
+                        roomState[discardKey] = false;
+
+                        console.log(
+                            `✅ [${role}] 舊回合已結束`
+                        );
                     }
 
-                    if (
-                        role === 'MANAGER' &&
-                        roomState.managerExpectingNewQuestion
-                    ) {
-                        recordQuestionFromTurn('MANAGER');
-                        roomState.managerExpectingNewQuestion = false;
+                    // 只有目前負責面試的 AI 才能更新說話狀態
+                    if (roomState.currentInterviewer === role) {
+                        roomState.isAiSpeaking = false;
                     }
-
-                    roomState.isAiSpeaking = false;
                 }
 
                 if (
@@ -1732,9 +1652,6 @@ ${formatQuestionHistory('MANAGER')}
                                 room.isAiSpeaking &&
                                 parsedMsg.realtimeInput.audio
                             ) {
-                                console.log(
-                                    `🚫 [音訊遭阻擋] isAiSpeaking=true，角色：${room.currentInterviewer}`
-                                );
                                 return;
                             }
                             // ⭐ 正常版 暫時更改
@@ -1770,11 +1687,23 @@ ${formatQuestionHistory('MANAGER')}
 
                                     room.userSpeechCandidateName =
                                         clientWs.candidateName || room.currentCandidateName;
-
-                                    // 新回答開始，重置上一輪 AI 回應文字
+                                    // 新回答開始前，先保存面試官上一段發言
                                     if (room.currentInterviewer === 'HR') {
+
+                                        if (room.hrCurrentTurnText.trim()) {
+                                            room.hrLastQuestionText =
+                                                room.hrCurrentTurnText.trim();
+                                        }
+
                                         room.hrCurrentTurnText = '';
+
                                     } else if (room.currentInterviewer === 'MANAGER') {
+
+                                        if (room.managerCurrentTurnText.trim()) {
+                                            room.managerLastQuestionText =
+                                                room.managerCurrentTurnText.trim();
+                                        }
+
                                         room.managerCurrentTurnText = '';
                                     }
 
@@ -2105,16 +2034,6 @@ ${formatQuestionHistory('MANAGER')}
                             lastManagerFinalSentence: "",
 
                             transcript: [],
-
-                            // 題目歷史
-                            questionHistory: {
-                                HR: [],
-                                MANAGER: []
-                            },
-
-                            hrExpectingNewQuestion: false,
-                            managerExpectingNewQuestion: false,
-
                             hrSpeechBuffer: "",
                             managerSpeechBuffer: "",
                             userSpeechBuffer: "",
