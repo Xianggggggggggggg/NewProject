@@ -165,7 +165,15 @@ function setupGroupWebSocket(options) {
             // 不受原本逐字稿 2 秒整理機制影響
             roomState.hrCurrentTurnText = '';
             roomState.managerCurrentTurnText = '';
-
+            // 題目歷史：HR 與主管分開記錄
+            roomState.questionHistory = {
+                HR: [],
+                MANAGER: []
+            };
+            // 標記目前 AI 這次發言是否正在提出「新題目」
+            // 避免同一題點名下一位候選人時，被重複記錄
+            roomState.hrExpectingNewQuestion = false;
+            roomState.managerExpectingNewQuestion = false;
 
             // (Prompt 設定維持原樣...)
             const candidatesNamesStr = candidatesList.map(c => c.name).join('、');
@@ -405,7 +413,79 @@ function setupGroupWebSocket(options) {
                     .replace(/\s+([，。！？、,.!?])/g, '$1')
                     .trim();
             };
+            // ==========================================
+            // 題目歷史管理
+            // ==========================================
 
+            // 將目前 AI 這次發言整理成題目文字
+            const extractQuestionFromTurn = (text) => {
+                let question = normalizeTranscript(text);
+
+                if (!question) return '';
+
+                // 移除最後的候選人點名句
+                // 例如：現在請王小明回答。
+                question = question.split(/現在請.{1,20}回答/)[0];
+
+                // 移除前後空白
+                question = question.trim();
+
+                // 移除過多的空白
+                question = question.replace(/\s+/g, '');
+
+                return question;
+            };
+
+
+            // 將已問過的題目整理成文字，提供給 Gemini 參考
+            const formatQuestionHistory = (role) => {
+                const history = roomState.questionHistory?.[role] || [];
+
+                if (history.length === 0) {
+                    return '目前尚無已完成的面試題目。';
+                }
+
+                return history.map((item, index) =>
+                    `${index + 1}. ${item.question}`
+                ).join('\n');
+            };
+
+
+            // 將新題目加入歷史紀錄
+            const recordQuestionFromTurn = (role) => {
+
+                const isHR = role === 'HR';
+
+                const text = isHR
+                    ? roomState.hrCurrentTurnText
+                    : roomState.managerCurrentTurnText;
+
+                const question = extractQuestionFromTurn(text);
+
+                if (!question || question.length < 5) {
+                    console.warn(`⚠️ [${role}] 無法取得有效題目，暫不加入歷史`);
+                    return;
+                }
+
+                const history = roomState.questionHistory[role];
+
+                // 避免同一題被重複記錄
+                const alreadyExists = history.some(item =>
+                    item.question === question
+                );
+
+                if (alreadyExists) {
+                    console.log(`ℹ️ [${role}] 題目已存在，不重複加入`);
+                    return;
+                }
+
+                history.push({
+                    round: history.length + 1,
+                    question
+                });
+
+                console.log(`📝 [${role}] 已記錄新題目：${question}`);
+            };
             const beginHandover = (role, finalUserText = '') => {
 
                 const isHR = role === 'HR';
@@ -626,28 +706,85 @@ function setupGroupWebSocket(options) {
                 roomState.currentCandidateResumeId = firstCandidate.resumeId;
                 roomState.currentCandidateName = firstCandidate.name;
 
+
                 if (isIntroRound) {
+
+                    // HR 正式開始出題
+                    roomState.hrExpectingNewQuestion = true;
 
                     sendNextInterviewerInstruction(
                         role,
                         `現在開始正式面試。
-請提出第一個新的 HR 面試問題。
+
+【已經問過的 HR 題目】
+${formatQuestionHistory('HR')}
+
+請根據應徵者履歷、職缺需求與企業背景，
+提出第一個新的 HR 面試問題。
+
+【避免重複提問】
+不得重複上述已問過的題目。
+可以延伸先前題目的不同面向，但必須有新的核心問題。
+
 提出問題後，最後一句必須逐字說：
 「現在請${firstCandidate.name}回答。」
+
 一次只能提出一個問題，之後等待候選人回答。`
                     );
 
                 } else {
 
-                    sendNextInterviewerInstruction(
-                        role,
-                        `上一題已經由所有應徵者依序回答完畢。
-現在請提出下一個新的${isHR ? 'HR' : '專業技術'}面試問題。
+                    // 依照目前的面試官角色，設定對應的題目歷史
+                    if (isHR) {
+
+                        roomState.hrExpectingNewQuestion = true;
+
+                        sendNextInterviewerInstruction(
+                            role,
+                            `上一題已經由所有應徵者依序回答完畢。
+
+【已經問過的 HR 題目】
+${formatQuestionHistory('HR')}
+
+現在請提出下一個新的 HR 面試問題。
+
+【避免重複提問】
+不得重複上述已問過的題目。
+請從不同面向深入了解應徵者，不要只是換句話說重問同一題。
+
 提出問題後，最後一句必須逐字說：
 「現在請${firstCandidate.name}回答。」
+
 一次只能提出一個問題，之後等待候選人回答。`
-                    );
+                        );
+
+                    } else {
+
+                        roomState.managerExpectingNewQuestion = true;
+
+                        sendNextInterviewerInstruction(
+                            role,
+                            `上一題已經由所有應徵者依序回答完畢。
+
+【HR 階段已經問過的題目】
+${formatQuestionHistory('HR')}
+
+【主管階段已經問過的題目】
+${formatQuestionHistory('MANAGER')}
+
+請參考前面 HR 與主管已經問過的題目，避免重複。
+
+現在請提出下一個新的技術面試問題。
+請著重在專業知識、技術應用或實務問題，不要直接重複 HR 已經問過的內容。
+
+提出問題後，最後一句必須逐字說：
+「現在請${firstCandidate.name}回答。」
+
+一次只能提出一個問題，之後等待候選人回答。`
+                        );
+                    }
                 }
+
             };
 
 
@@ -1027,6 +1164,7 @@ function setupGroupWebSocket(options) {
                                         roomState.currentCandidateName =
                                             firstCandidate.name;
 
+
                                         if (
                                             roomState.managerWs &&
                                             roomState.managerWs.readyState === WebSocket.OPEN
@@ -1034,19 +1172,37 @@ function setupGroupWebSocket(options) {
                                             console.log(
                                                 "👨‍💻 [權限切換] 部門主管正式接手"
                                             );
+
+                                            roomState.managerExpectingNewQuestion = true;
                                             roomState.isAiSpeaking = true;
 
                                             roomState.managerWs.send(JSON.stringify({
                                                 realtimeInput: {
-                                                    text: `HR 已經正式交棒給你。
-                                                        請立刻開始技術面試，提出第一個完整的技術問題。
-                                                        問題必須與「${position}」職缺、應徵者履歷或實際技術能力相關。
-                                                        問題說完後，最後一句必須逐字說：
-                                                        「現在請${firstCandidate.name}回答。」`
+                                                    text: `[後端系統控制指令]
+
+HR 已經正式交棒給你。
+
+【HR 階段已經問過的題目】
+${formatQuestionHistory('HR')}
+
+【主管階段已經問過的題目】
+${formatQuestionHistory('MANAGER')}
+
+請參考 HR 階段的題目，避免重複詢問相同內容。
+
+現在請立刻開始技術面試，提出第一個完整的技術問題。
+問題必須與「${position}」職缺、應徵者履歷或實際技術能力相關。
+
+【避免重複提問】
+不得直接重複 HR 已經問過的題目。
+請著重在專業知識、技術應用或實務問題。
+
+問題說完後，最後一句必須逐字說：
+「現在請${firstCandidate.name}回答。」`
                                                 }
                                             }));
-
-                                        } else {
+                                        }
+else {
                                             console.warn(
                                                 "⚠️ Manager WebSocket 非 OPEN，重新建立主管連線",
                                                 roomState.managerWs?.readyState
@@ -1118,18 +1274,34 @@ function setupGroupWebSocket(options) {
                                                         data => handleAiResponse('MANAGER', data)
                                                     );
 
+                                                    roomState.managerExpectingNewQuestion = true;
                                                     roomState.isAiSpeaking = true;
 
                                                     newManagerWs.send(JSON.stringify({
                                                         realtimeInput: {
-                                                            text: `HR 已經正式交棒給你。
-請立刻開始技術面試，提出第一個完整的技術問題。
+                                                            text: `[後端系統控制指令]
+
+HR 已經正式交棒給你。
+
+【HR 階段已經問過的題目】
+${formatQuestionHistory('HR')}
+
+【主管階段已經問過的題目】
+${formatQuestionHistory('MANAGER')}
+
+請參考 HR 階段的題目，避免重複詢問相同內容。
+
+現在請立刻開始技術面試，提出第一個完整的技術問題。
 問題必須與「${position}」職缺、應徵者履歷或實際技術能力相關。
+
+【避免重複提問】
+不得直接重複 HR 已經問過的題目。
+請著重在專業知識、技術應用或實務問題。
+
 問題說完後，最後一句必須逐字說：
 「現在請${firstCandidate.name}回答。」`
                                                         }
-                                                    }));
-                                                }
+                                                    }));                                                }
                                             };
 
                                             newManagerWs.on(
@@ -1362,6 +1534,24 @@ function setupGroupWebSocket(options) {
                     response.serverContent?.turnComplete &&
                     roomState.currentInterviewer === role
                 ) {
+
+                    // 只有後端事先標記為「新題目」的發言才記錄
+                    if (
+                        role === 'HR' &&
+                        roomState.hrExpectingNewQuestion
+                    ) {
+                        recordQuestionFromTurn('HR');
+                        roomState.hrExpectingNewQuestion = false;
+                    }
+
+                    if (
+                        role === 'MANAGER' &&
+                        roomState.managerExpectingNewQuestion
+                    ) {
+                        recordQuestionFromTurn('MANAGER');
+                        roomState.managerExpectingNewQuestion = false;
+                    }
+
                     roomState.isAiSpeaking = false;
                 }
 
@@ -1905,6 +2095,16 @@ function setupGroupWebSocket(options) {
                             lastManagerFinalSentence: "",
 
                             transcript: [],
+
+                            // 題目歷史
+                            questionHistory: {
+                                HR: [],
+                                MANAGER: []
+                            },
+
+                            hrExpectingNewQuestion: false,
+                            managerExpectingNewQuestion: false,
+
                             hrSpeechBuffer: "",
                             managerSpeechBuffer: "",
                             userSpeechBuffer: "",
