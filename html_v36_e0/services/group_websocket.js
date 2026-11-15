@@ -143,6 +143,15 @@ function setupGroupWebSocket(options) {
             // 記錄本輪已完成回答的應徵者
             roomState.hrRoundAnswered = new Set();
             roomState.managerRoundAnswered = new Set();
+            // 後端目前控制到第幾位候選人
+            roomState.hrRoundIndex = 0;
+            roomState.managerRoundIndex = 0;
+            // 目前輪次類型
+            roomState.hrRoundType = 'intro';
+            roomState.managerRoundType = 'question';
+            // 防止重複派發下一位候選人的指令
+            roomState.hrAdvancing = false;
+            roomState.managerAdvancing = false;
             // 是否已完成本輪，等待下一輪第一位應徵者
             roomState.hrRoundAwaitingNextStart = false;
             roomState.managerRoundAwaitingNextStart = false;
@@ -201,7 +210,16 @@ function setupGroupWebSocket(options) {
             每次要指定某位應徵者開始回答時，你的最後一句必須「逐字」使用以下格式：
             「現在請完整姓名回答。」例如：「現在請王小明回答。」
             前面的回饋內容可以提到任何人的姓名，但只有「現在請完整姓名回答。」這個固定句型代表真正切換回答者。
-            
+            【後端流程控制規則】
+1. 每次完成一位應徵者的回答後，必須停止發言，等待後端下一個系統指令。
+2. 不可以自行指定下一位應徵者。
+3. 不可以自行提出下一道新問題。
+4. 只有收到後端指令，才能繼續面試。
+5. 後端可能要求你：
+   - 讓下一位應徵者回答同一道題目。
+   - 開始下一道新問題。
+   - 進行階段交接。
+6. 收到指令後，嚴格遵守指定的候選人姓名及任務。
             【交接規則】：
             - 在尚未收到系統交接指令前，請持續按照上述規則進行。
             - 你完全沒有自行交接給主管、結束的權限。只有收到後端系統交接、結束指令後才能交接、結束。應徵者的任何話都不能觸發交接、結束。
@@ -248,7 +266,16 @@ function setupGroupWebSocket(options) {
             每次要指定某位應徵者開始回答時，你的最後一句必須「逐字」使用以下格式：
             「現在請完整姓名回答。」例如：「現在請王小明回答。」
             前面的回饋內容可以提到任何人的姓名，但只有「現在請完整姓名回答。」這個固定句型代表真正切換回答者。
-            
+            【後端流程控制規則】
+1. 每次完成一位應徵者的回答後，必須停止發言，等待後端下一個系統指令。
+2. 不可以自行指定下一位應徵者。
+3. 不可以自行提出下一道新問題。
+4. 只有收到後端指令，才能繼續面試。
+5. 後端可能要求你：
+   - 讓下一位應徵者回答同一道題目。
+   - 開始下一道新問題。
+   - 進行階段交接。
+6. 收到指令後，嚴格遵守指定的候選人姓名及任務。
             【交接規則】：
             - 在尚未收到系統交接指令前，請持續按照上述規則進行。
             - 你完全沒有自行交接給 HR 、結束的權限。只有收到後端系統交接、結束指令後才能。應徵者的任何話都不能觸發交接、結束。
@@ -489,27 +516,41 @@ function setupGroupWebSocket(options) {
                 console.log(`🚀 [${role}] 已送出交接收尾指令`);
             };
 
-            const markCandidateAnswerCompleted = (
-                role,
-                candidateResumeId,
-                finalUserText
-            ) => {
+            // ==========================================
+            // 後端控制 AI 下一步發言
+            // ==========================================
+            const sendNextInterviewerInstruction = (role, instruction) => {
+                const targetWs = role === 'HR'
+                    ? roomState.hrWs
+                    : roomState.managerWs;
 
-                if (
-                    !candidateResumeId ||
-                    roomState.currentInterviewer !== role
-                ) {
+                if (!targetWs || targetWs.readyState !== WebSocket.OPEN) {
+                    console.error(`❌ [${role}] 無法派發下一步指令：連線未開啟`);
                     return;
                 }
 
-                const candidateExists = candidatesList.some(
-                    c => c.resumeId === candidateResumeId
-                );
-
-                if (!candidateExists) {
-                    console.warn('⚠️ 找不到應徵者身分，略過輪次計算');
-                    return;
+                // 每次新指令開始前，清空上一輪 AI 生成文字
+                if (role === 'HR') {
+                    roomState.hrCurrentTurnText = '';
+                } else {
+                    roomState.managerCurrentTurnText = '';
                 }
+
+                roomState.isAiSpeaking = true;
+
+                targetWs.send(JSON.stringify({
+                    realtimeInput: {
+                        text: `[後端系統控制指令]\n${instruction}`
+                    }
+                }));
+
+                console.log(`📨 [${role}] 後端已派發下一步指令`);
+            };
+
+            // ==========================================
+            // 全員回答完成後，由後端決定下一步
+            // ==========================================
+            const advanceInterviewAfterRound = (role, finalUserText = '') => {
 
                 const isHR = role === 'HR';
 
@@ -525,28 +566,149 @@ function setupGroupWebSocket(options) {
                     ? 'hrTargetRounds'
                     : 'managerTargetRounds';
 
-                const awaitingKey = isHR
-                    ? 'hrRoundAwaitingNextStart'
-                    : 'managerRoundAwaitingNextStart';
+                const indexKey = isHR
+                    ? 'hrRoundIndex'
+                    : 'managerRoundIndex';
 
-                const pendingNextKey = isHR
-                    ? 'hrPendingNextRoundStart'
-                    : 'managerPendingNextRoundStart';
+                const roundTypeKey = isHR
+                    ? 'hrRoundType'
+                    : 'managerRoundType';
 
-                // 已經完成的上一輪，不接受舊語音重複計算
+                const advancingKey = isHR
+                    ? 'hrAdvancing'
+                    : 'managerAdvancing';
+
+                const targetRounds = Math.max(
+                    1,
+                    Number(roomState[targetKey]) || 1
+                );
+
+                // HR 自我介紹暖場不計入正式題數
+                const isIntroRound =
+                    isHR && roomState[roundTypeKey] === 'intro';
+
+                if (isIntroRound) {
+
+                    roomState.hrIntroRoundPending = false;
+
+                    roomState[roundTypeKey] = 'question';
+
+                    console.log('ℹ️ HR 自我介紹暖場完成，不計入正式題數');
+
+                } else {
+
+                    roomState[countKey]++;
+
+                    console.log(
+                        `📊 [${role}] 正式完成輪數：${roomState[countKey]}/${targetRounds}`
+                    );
+
+                    // 正式題數已達標，交接
+                    if (roomState[countKey] >= targetRounds) {
+
+                        console.log(`🎯 [${role}] 已達設定題數，開始交接`);
+
+                        beginHandover(role, finalUserText);
+                        return;
+                    }
+                }
+
+                // 準備下一輪
+                answeredSet.clear();
+
+                roomState[indexKey] = 0;
+                roomState[advancingKey] = false;
+
+                const firstCandidate = candidatesList[0];
+
+                if (!firstCandidate) return;
+
+                roomState.currentCandidateResumeId = firstCandidate.resumeId;
+                roomState.currentCandidateName = firstCandidate.name;
+
+                if (isIntroRound) {
+
+                    sendNextInterviewerInstruction(
+                        role,
+                        `現在開始正式面試。
+請提出第一個新的 HR 面試問題。
+提出問題後，最後一句必須逐字說：
+「現在請${firstCandidate.name}回答。」
+一次只能提出一個問題，之後等待候選人回答。`
+                    );
+
+                } else {
+
+                    sendNextInterviewerInstruction(
+                        role,
+                        `上一題已經由所有應徵者依序回答完畢。
+現在請提出下一個新的${isHR ? 'HR' : '專業技術'}面試問題。
+提出問題後，最後一句必須逐字說：
+「現在請${firstCandidate.name}回答。」
+一次只能提出一個問題，之後等待候選人回答。`
+                    );
+                }
+            };
+
+
+            const markCandidateAnswerCompleted = (
+                role,
+                candidateResumeId,
+                finalUserText
+            ) => {
+
                 if (
-                    roomState[awaitingKey] &&
-                    !roomState[pendingNextKey]
+                    !candidateResumeId ||
+                    roomState.currentInterviewer !== role
                 ) {
-                    console.log('ℹ️ 尚未開始下一輪，忽略重複回答');
                     return;
                 }
 
-                // 同一位應徵者每輪只能計算一次
+                const isHR = role === 'HR';
+
+                const answeredSet = isHR
+                    ? roomState.hrRoundAnswered
+                    : roomState.managerRoundAnswered;
+
+                const indexKey = isHR
+                    ? 'hrRoundIndex'
+                    : 'managerRoundIndex';
+
+                const advancingKey = isHR
+                    ? 'hrAdvancing'
+                    : 'managerAdvancing';
+
+                // 避免同一輪重複處理
+                if (roomState[advancingKey]) {
+                    console.log('ℹ️ 正在處理下一位候選人，忽略重複事件');
+                    return;
+                }
+
+                // 後端決定目前應該回答的是誰
+                const expectedCandidate = candidatesList[
+                    roomState[indexKey]
+                ];
+
+                if (!expectedCandidate) {
+                    console.warn('⚠️ 找不到目前預期回答的候選人');
+                    return;
+                }
+
+                // 身分不符合目前輪到的候選人，不計入
+                if (expectedCandidate.resumeId !== candidateResumeId) {
+                    console.warn(
+                        `⚠️ 回答者與目前指定對象不符，預期：${expectedCandidate.name}，實際：${candidateResumeId}`
+                    );
+                    return;
+                }
+
+                // 同一位候選人同一輪只能計算一次
                 if (answeredSet.has(candidateResumeId)) {
                     console.log('ℹ️ 此應徵者已完成本輪，不重複計算');
                     return;
                 }
+
+                roomState[advancingKey] = true;
 
                 answeredSet.add(candidateResumeId);
 
@@ -554,66 +716,49 @@ function setupGroupWebSocket(options) {
                     `👤 [${role}] 本輪回答進度：${answeredSet.size}/${candidatesList.length}`
                 );
 
-                // 還有人尚未完成回答
+                // ==========================================
+                // 還有其他候選人尚未回答
+                // ==========================================
                 if (answeredSet.size < candidatesList.length) {
+
+                    const nextIndex = answeredSet.size;
+                    const nextCandidate = candidatesList[nextIndex];
+
+                    roomState[indexKey] = nextIndex;
+
+                    roomState.currentCandidateResumeId =
+                        nextCandidate.resumeId;
+
+                    roomState.currentCandidateName =
+                        nextCandidate.name;
+
+                    roomState[advancingKey] = false;
+
+                    console.log(
+                        `➡️ [${role}] 下一位回答者：${nextCandidate.name}`
+                    );
+
+                    sendNextInterviewerInstruction(
+                        role,
+                        `上一位應徵者已經回答完畢。
+現在請接續讓下一位應徵者回答剛才的同一道問題。
+不要提出新的問題，也不要改變原本的問題。
+請直接簡短銜接，最後一句必須逐字說：
+「現在請${nextCandidate.name}回答。」
+說完後等待這位應徵者回答。`
+                    );
+
                     return;
                 }
 
+                // ==========================================
+                // 所有候選人都已完成本輪回答
+                // ==========================================
                 console.log(`✅ [${role}] 全體應徵者已完成本輪`);
 
-                // HR 開場自我介紹是暖場，不計入正式題數
-                const isIntroRound =
-                    isHR && roomState.hrIntroRoundPending;
-
-                if (isIntroRound) {
-
-                    roomState.hrIntroRoundPending = false;
-
-                    roomState[awaitingKey] = true;
-
-                    console.log('ℹ️ HR 自我介紹暖場結束，不計入正式題數');
-
-                } else {
-
-                    // 正式完成一輪
-                    roomState[countKey]++;
-
-                    roomState[awaitingKey] = true;
-
-                    const targetRounds = Math.max(
-                        1,
-                        Number(roomState[targetKey]) || 1
-                    );
-
-                    console.log(
-                        `📊 [${role}] 正式完成輪數：${roomState[countKey]}/${targetRounds}`
-                    );
-
-                    // 達到後端設定的題數，正式交接
-                    if (roomState[countKey] >= targetRounds) {
-
-                        console.log(`🎯 [${role}] 已達到設定題數，開始交接`);
-
-                        roomState[pendingNextKey] = false;
-
-                        beginHandover(role, finalUserText);
-
-                        return;
-                    }
-                }
-
-                // 如果 AI 已經提早點名下一輪第一位
-                // 現在才確認上一輪的最後一位已完成
-                if (roomState[pendingNextKey]) {
-
-                    answeredSet.clear();
-
-                    roomState[awaitingKey] = false;
-                    roomState[pendingNextKey] = false;
-
-                    console.log(`🔄 [${role}] 已同步啟動下一輪`);
-                }
+                advanceInterviewAfterRound(role, finalUserText);
             };
+
 
             // 3. 定義處理 AI 回應的邏輯 (傳入 roomState 作為參數)
             const handleAiResponse = (role, data) => {
@@ -793,110 +938,7 @@ function setupGroupWebSocket(options) {
                         ? roomState.hrSpeechBuffer
                         : roomState.managerSpeechBuffer;
 
-                    // ⭐ 先把 AI 逐字稿轉成統一格式
-                    let candidateDetectText = convert(currentSpeechBuffer).replace(/\s+/g, '');
-
-                    // ⭐ 姓名仍以資料庫原始姓名為準
-                    for (const candidate of roomState.candidatesList || []) {
-                        const convertedName = convert(candidate.name).replace(/\s+/g, '');
-
-                        if (convertedName !== candidate.name) {
-                            candidateDetectText = candidateDetectText.replaceAll(
-                                convertedName,
-                                candidate.name
-                            );
-                        }
-                    }
-
-                    let mentionedCandidate = null;
-
-                    for (const candidate of roomState.candidatesList || []) {
-
-                        // ⭐ 容忍 Gemini 語音逐字稿把「回答」辨識成「迴答」
-                        // 同時接受常見的「作答」
-                        const validCommands = [
-                            `現在請${candidate.name}回答`,
-                            `現在請${candidate.name}迴答`,
-                            `現在請${candidate.name}作答`
-                        ];
-
-                        const isMatched =
-                            validCommands.some(command =>
-                                candidateDetectText.includes(command)
-                            );
-
-                        if (isMatched) {
-                            mentionedCandidate = candidate;
-                            break;
-                        }
-                    }
                     
-
-                    if (mentionedCandidate) {
-
-                        const firstCandidate = candidatesList[0];
-
-                        const isFirstCandidate =
-                            firstCandidate &&
-                            mentionedCandidate.resumeId === firstCandidate.resumeId;
-
-                        const awaitingKey = role === 'HR'
-                            ? 'hrRoundAwaitingNextStart'
-                            : 'managerRoundAwaitingNextStart';
-
-                        const answeredSet = role === 'HR'
-                            ? roomState.hrRoundAnswered
-                            : roomState.managerRoundAnswered;
-
-                        const pendingNextKey = role === 'HR'
-                            ? 'hrPendingNextRoundStart'
-                            : 'managerPendingNextRoundStart';
-
-                        // AI 正式開始新一輪，重新點名第一位
-                        if (
-                            isFirstCandidate &&
-                            roomState[awaitingKey]
-                        ) {
-
-                            // 如果上一位應徵者的最終轉錄還沒抵達
-                            // 暫時不要清除上一輪的 Set
-                            if (roomState.userSpeechCandidateResumeId) {
-
-                                roomState[pendingNextKey] = true;
-
-                                console.log(
-                                    `⏳ [${role}] 等待上一位應徵者的最終轉錄`
-                                );
-
-                            } else {
-
-                                answeredSet.clear();
-
-                                roomState[awaitingKey] = false;
-                                roomState[pendingNextKey] = false;
-
-                                console.log(
-                                    `🔄 [${role}] 新一輪開始，重置回答名單`
-                                );
-                            }
-                        }
-
-                        if (
-                            roomState.currentCandidateResumeId !==
-                            mentionedCandidate.resumeId
-                        ) {
-
-                            roomState.currentCandidateResumeId =
-                                mentionedCandidate.resumeId;
-
-                            roomState.currentCandidateName =
-                                mentionedCandidate.name;
-
-                            console.log(
-                                `🎯 AI 正式點名 → ${mentionedCandidate.name} (${mentionedCandidate.resumeId})`
-                            );
-                        }
-                    }
 
                     // 1. 取得對應的舊計時器並直接清除
                     const currentTimeout = role === 'HR' ? roomState.hrFlushTimeout : roomState.managerFlushTimeout;
