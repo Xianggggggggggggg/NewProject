@@ -165,21 +165,7 @@ function setupGroupWebSocket(options) {
             // 不受原本逐字稿 2 秒整理機制影響
             roomState.hrCurrentTurnText = '';
             roomState.managerCurrentTurnText = '';
-            // ==========================================
-            // AI 輸出閘門
-            // ==========================================
 
-            // 是否允許 HR / Manager 的生成內容送到前端
-            roomState.hrOutputEnabled = false;
-            roomState.managerOutputEnabled = false;
-
-            // 是否存在尚未結束的「未授權 AI 生成回合」
-            roomState.hrSuppressedTurn = false;
-            roomState.managerSuppressedTurn = false;
-
-            // 暫存尚未派發的 AI 指令
-            roomState.hrPendingOutput = null;
-            roomState.managerPendingOutput = null;
 
             // (Prompt 設定維持原樣...)
             const candidatesNamesStr = candidatesList.map(c => c.name).join('、');
@@ -309,10 +295,7 @@ function setupGroupWebSocket(options) {
                 );
 
                 roomState.hrReconnectForFinal = true;
-                // 新連線重新建立輸出狀態
-                roomState.hrOutputEnabled = false;
-                roomState.hrSuppressedTurn = false;
-                roomState.hrPendingOutput = null;
+
                 const newHrWs =
                     new WebSocket(GEMINI_WS_URL);
 
@@ -425,178 +408,7 @@ function setupGroupWebSocket(options) {
                     .replace(/\s+([，。！？、,.!?])/g, '$1')
                     .trim();
             };
-            // ==========================================
-            // 🔐 AI 輸出閘門控制
-            // ==========================================
 
-            const getOutputGateState = (role) => {
-
-                if (role === 'HR') {
-                    return {
-                        wsKey: 'hrWs',
-                        outputKey: 'hrOutputEnabled',
-                        suppressedKey: 'hrSuppressedTurn',
-                        pendingKey: 'hrPendingOutput',
-                        currentTextKey: 'hrCurrentTurnText'
-                    };
-                }
-
-                return {
-                    wsKey: 'managerWs',
-                    outputKey: 'managerOutputEnabled',
-                    suppressedKey: 'managerSuppressedTurn',
-                    pendingKey: 'managerPendingOutput',
-                    currentTextKey: 'managerCurrentTurnText'
-                };
-            };
-
-
-            // 真正派發 AI 指令，並開啟輸出許可
-            const dispatchAuthorizedAiPayload = (
-                role,
-                payload,
-                options = {}
-            ) => {
-
-                const state = getOutputGateState(role);
-                const targetWs = roomState[state.wsKey];
-
-                if (
-                    !targetWs ||
-                    targetWs.readyState !== WebSocket.OPEN
-                ) {
-                    console.error(
-                        `❌ [${role}] 輸出指令失敗：WebSocket 未開啟`
-                    );
-                    return false;
-                }
-
-                // 只有真正開始新一段 AI 發言時才重置文字
-                if (options.resetCurrentTurnText) {
-                    roomState[state.currentTextKey] = '';
-                }
-
-                // 先開啟閘門，再送出指令
-                roomState[state.outputKey] = true;
-                roomState.isAiSpeaking = true;
-
-                targetWs.send(JSON.stringify(payload));
-
-                console.log(
-                    `🔓 [${role}] AI 輸出閘門已開啟：${options.label || 'AI 發言'}`
-                );
-
-                return true;
-            };
-
-
-            // 正式派發指令
-            // 若目前還有舊回合，就先放入待執行佇列
-            const sendAuthorizedAiPayload = (
-                role,
-                payload,
-                options = {}
-            ) => {
-
-                const state = getOutputGateState(role);
-
-                const targetWs = roomState[state.wsKey];
-
-                if (
-                    !targetWs ||
-                    targetWs.readyState !== WebSocket.OPEN
-                ) {
-                    console.error(
-                        `❌ [${role}] 無法派發指令：WebSocket 未開啟`
-                    );
-                    return false;
-                }
-
-                const isPreviousTurnStillActive =
-                    roomState[state.outputKey] ||
-                    roomState[state.suppressedKey];
-
-                // 上一段 AI 生成尚未完成
-                if (isPreviousTurnStillActive) {
-
-                    if (roomState[state.pendingKey]) {
-                        console.error(
-                            `⚠️ [${role}] 已存在待執行指令，避免覆蓋而取消本次派發`
-                        );
-                        return false;
-                    }
-
-                    roomState[state.pendingKey] = {
-                        payload,
-                        options
-                    };
-
-                    console.log(
-                        `⏳ [${role}] 前一段生成尚未結束，指令暫存：${options.label || 'AI 發言'}`
-                    );
-
-                    return true;
-                }
-
-                return dispatchAuthorizedAiPayload(
-                    role,
-                    payload,
-                    options
-                );
-            };
-
-
-            // AI 回合真正結束後，關閉閘門並處理待執行指令
-            const finishAiOutputTurn = (role) => {
-
-                const state = getOutputGateState(role);
-
-                // 先關閉目前角色的輸出許可
-                roomState[state.outputKey] = false;
-
-                // 代表這個 AI 回合已經結束
-                roomState[state.suppressedKey] = false;
-
-                if (roomState.currentInterviewer === role) {
-                    roomState.isAiSpeaking = false;
-                }
-
-                console.log(
-                    `🔒 [${role}] AI 輸出閘門已關閉`
-                );
-
-                // 檢查是否有等待派發的指令
-                const pending = roomState[state.pendingKey];
-
-                if (!pending) return;
-
-                roomState[state.pendingKey] = null;
-
-                // 避免角色已經切換，卻執行舊角色指令
-                if (roomState.currentInterviewer !== role) {
-
-                    console.warn(
-                        `⚠️ [${role}] 角色已切換，取消過期的待執行指令`
-                    );
-
-                    return;
-                }
-
-                console.log(
-                    `🚀 [${role}] 前一回合結束，正式執行暫存指令`
-                );
-
-                dispatchAuthorizedAiPayload(
-                    role,
-                    pending.payload,
-                    pending.options
-                );
-            };
-
-
-            // 提供外部真人插話恢復流程使用
-            roomState.sendAuthorizedAiPayload =
-                sendAuthorizedAiPayload;
             const beginHandover = (role, finalUserText = '') => {
 
                 const isHR = role === 'HR';
@@ -690,50 +502,54 @@ function setupGroupWebSocket(options) {
     `;
 
                 // 正式進入交接階段
-                // 正式進入交接階段
-                sendAuthorizedAiPayload(
-                    role,
-                    {
-                        clientContent: {
-                            turns: [{
-                                role: 'user',
-                                parts: [{
-                                    text: injectionPrompt
-                                }]
-                            }],
-                            turnComplete: true
-                        }
-                    },
-                    {
-                        label: '階段交接收尾'
+                roomState.isAiSpeaking = true;
+
+                targetWs.send(JSON.stringify({
+                    clientContent: {
+                        turns: [{
+                            role: 'user',
+                            parts: [{
+                                text: injectionPrompt
+                            }]
+                        }],
+                        turnComplete: true
                     }
-                );
+                }));
 
-                console.log(
-                    `🚀 [${role}] 已派發或暫存交接收尾指令`
-                );            };
-
-            const sendNextInterviewerInstruction = (role, instruction) => {
-
-                const success = sendAuthorizedAiPayload(
-                    role,
-                    {
-                        realtimeInput: {
-                            text: `[後端系統控制指令]\n${instruction}`
-                        }
-                    },
-                    {
-                        label: '下一步面試指令',
-                        resetCurrentTurnText: true
-                    }
-                );
-
-                if (success) {
-                    console.log(
-                        `📨 [${role}] 後端已派發或暫存下一步指令`
-                    );
-                }
+                console.log(`🚀 [${role}] 已送出交接收尾指令`);
             };
+
+            // ==========================================
+            // 後端控制 AI 下一步發言
+            // ==========================================
+            const sendNextInterviewerInstruction = (role, instruction) => {
+                const targetWs = role === 'HR'
+                    ? roomState.hrWs
+                    : roomState.managerWs;
+
+                if (!targetWs || targetWs.readyState !== WebSocket.OPEN) {
+                    console.error(`❌ [${role}] 無法派發下一步指令：連線未開啟`);
+                    return;
+                }
+
+                // 每次新指令開始前，清空上一輪 AI 生成文字
+                if (role === 'HR') {
+                    roomState.hrCurrentTurnText = '';
+                } else {
+                    roomState.managerCurrentTurnText = '';
+                }
+
+                roomState.isAiSpeaking = true;
+
+                targetWs.send(JSON.stringify({
+                    realtimeInput: {
+                        text: `[後端系統控制指令]\n${instruction}`
+                    }
+                }));
+
+                console.log(`📨 [${role}] 後端已派發下一步指令`);
+            };
+
             // ==========================================
             // 全員回答完成後，由後端決定下一步
             // ==========================================
@@ -964,39 +780,7 @@ function setupGroupWebSocket(options) {
                 }
 
                 if (roomState.isInterviewEnded) return;
-                // ==========================================
-                // 🔐 判斷這段 AI 輸出是否獲得播放許可
-                // ==========================================
 
-                const outputState = getOutputGateState(role);
-
-                const hasGeneratedOutput = Boolean(
-                    response.serverContent?.modelTurn?.parts?.length ||
-                    response.serverContent?.outputTranscription?.text
-                );
-
-                // 沒有輸出許可卻收到 AI 生成內容
-                // 代表 Gemini 正在自行產生未授權回覆
-                if (
-                    hasGeneratedOutput &&
-                    !roomState[outputState.outputKey]
-                ) {
-
-                    if (!roomState[outputState.suppressedKey]) {
-                        console.warn(
-                            `🚫 [${role}] 偵測到未授權 AI 回覆，開始隔離本次生成`
-                        );
-                    }
-
-                    roomState[outputState.suppressedKey] = true;
-                }
-
-                // 必須同時符合：
-                // 1. 輸出閘門開啟
-                // 2. 目前確實輪到這個角色
-                const canPublishOutput =
-                    roomState[outputState.outputKey] === true &&
-                    roomState.currentInterviewer === role;
 
                 if (response.setupComplete && role === 'HR') {
 
@@ -1017,18 +801,13 @@ function setupGroupWebSocket(options) {
                             finalPrompt &&
                             roomState.hrWs?.readyState === WebSocket.OPEN
                         ) {
-                            sendAuthorizedAiPayload(
-                                'HR',
-                                {
-                                    realtimeInput: {
-                                        text: finalPrompt
-                                    }
-                                },
-                                {
-                                    label: 'HR 最終結語',
-                                    resetCurrentTurnText: true
+                            roomState.isAiSpeaking = true;
+                            roomState.hrWs.send(JSON.stringify({
+                                realtimeInput: {
+                                    text: finalPrompt
                                 }
-                            );                        }
+                            }));
+                        }
 
                         return;
                     }
@@ -1059,24 +838,17 @@ function setupGroupWebSocket(options) {
                         );
                         roomState.isAiSpeaking = true;
 
-                        sendAuthorizedAiPayload(
-                            'HR',
-                            {
-                                realtimeInput: {
-                                    text: `[系統指令]
-                請語音開場歡迎大家（${candidatesNamesStr}），並請第一位應徵者做自我介紹。
+                        roomState.hrWs.send(JSON.stringify({
+                            realtimeInput: {
+                                text: `[系統指令]
+                                    請語音開場歡迎大家（${candidatesNamesStr}），並請第一位應徵者做自我介紹。
 
-                你的最後一句必須逐字說：
-                「現在請${firstName}回答。」
+                                    你的最後一句必須逐字說：
+                                    「現在請${firstName}回答。」
 
-                不要使用其他點名句型。`
-                                }
-                            },
-                            {
-                                label: 'HR 開場',
-                                resetCurrentTurnText: true
+                                    不要使用其他點名句型。`
                             }
-                        );
+                        }));
 
                     }, 1000);
                 }
@@ -1085,7 +857,7 @@ function setupGroupWebSocket(options) {
                 // ==========================================
                 if (
                     response.serverContent?.modelTurn?.parts &&
-                    canPublishOutput
+                    roomState.currentInterviewer === role
                 ) {
                     roomState.isAiSpeaking = true;
 
@@ -1105,11 +877,7 @@ function setupGroupWebSocket(options) {
                 }
 
                 if (response.serverContent?.interrupted) {
-                    // 目前生成已被中斷，立即關閉輸出許可
-                    roomState[outputState.outputKey] = false;
 
-                    // 等待這個被中斷的回合正式結束
-                    roomState[outputState.suppressedKey] = true;
                     const isThisRoleWrapping =
                         (
                             role === 'HR' &&
@@ -1150,10 +918,8 @@ function setupGroupWebSocket(options) {
                     }
                 }
                 // 處理語音轉文字邏輯
-                if (
-                    response.serverContent?.outputTranscription &&
-                    canPublishOutput
-                ) {
+                if (response.serverContent?.outputTranscription) {
+
                     const outputText =
                         response.serverContent.outputTranscription.text || '';
 
@@ -1245,7 +1011,7 @@ function setupGroupWebSocket(options) {
                                     console.log("🔄 [權限切換] HR 已完整說出固定交接台詞 → 部門主管");
                                     // ⭐ 立刻鎖住 HR
                                     roomState.currentInterviewer = 'HANDOVER';
-                                    roomState.hrOutputEnabled = false;
+
                                     // ⭐ 清除交接狀態，避免同一句觸發兩次
                                     roomState.isHRWrappingUp = false;
                                     roomState.pendingHandover = null;
@@ -1271,22 +1037,18 @@ function setupGroupWebSocket(options) {
                                             console.log(
                                                 "👨‍💻 [權限切換] 部門主管正式接手"
                                             );
-                                            sendAuthorizedAiPayload(
-                                                'MANAGER',
-                                                {
-                                                    realtimeInput: {
-                                                        text: `HR 已經正式交棒給你。
-                                                                請立刻開始技術面試，提出第一個完整的技術問題。
-                                                                問題必須與「${position}」職缺、應徵者履歷或實際技術能力相關。
-                                                                問題說完後，最後一句必須逐字說：
-                                                                「現在請${firstCandidate.name}回答。」`
-                                                    }
-                                                },
-                                                {
-                                                    label: '主管第一題',
-                                                    resetCurrentTurnText: true
+                                            roomState.isAiSpeaking = true;
+
+                                            roomState.managerWs.send(JSON.stringify({
+                                                realtimeInput: {
+                                                    text: `HR 已經正式交棒給你。
+                                                        請立刻開始技術面試，提出第一個完整的技術問題。
+                                                        問題必須與「${position}」職缺、應徵者履歷或實際技術能力相關。
+                                                        問題說完後，最後一句必須逐字說：
+                                                        「現在請${firstCandidate.name}回答。」`
                                                 }
-                                            );
+                                            }));
+
                                         } else {
                                             console.warn(
                                                 "⚠️ Manager WebSocket 非 OPEN，重新建立主管連線",
@@ -1295,9 +1057,7 @@ function setupGroupWebSocket(options) {
 
                                             const newManagerWs =
                                                 new WebSocket(GEMINI_WS_URL);
-                                            roomState.managerOutputEnabled = false;
-                                            roomState.managerSuppressedTurn = false;
-                                            roomState.managerPendingOutput = null;
+
                                             roomState.managerWs = newManagerWs;
 
                                             newManagerWs.on('open', () => {
@@ -1362,22 +1122,17 @@ function setupGroupWebSocket(options) {
                                                         data => handleAiResponse('MANAGER', data)
                                                     );
 
-                                                    sendAuthorizedAiPayload(
-                                                        'MANAGER',
-                                                        {
-                                                            realtimeInput: {
-                                                                text: `HR 已經正式交棒給你。
+                                                    roomState.isAiSpeaking = true;
+
+                                                    newManagerWs.send(JSON.stringify({
+                                                        realtimeInput: {
+                                                            text: `HR 已經正式交棒給你。
 請立刻開始技術面試，提出第一個完整的技術問題。
 問題必須與「${position}」職缺、應徵者履歷或實際技術能力相關。
 問題說完後，最後一句必須逐字說：
 「現在請${firstCandidate.name}回答。」`
-                                                            }
-                                                        },
-                                                        {
-                                                            label: '主管重新接手',
-                                                            resetCurrentTurnText: true
                                                         }
-                                                    );
+                                                    }));
                                                 }
                                             };
 
@@ -1429,7 +1184,7 @@ function setupGroupWebSocket(options) {
                                     console.log("🔄 [權限切換] 部門主管已完整說出固定交接台詞 → HR");
 
                                     roomState.currentInterviewer = 'HANDOVER';
-                                    roomState.managerOutputEnabled = false;
+
                                     roomState.isManagerWrappingUp = false;
                                     roomState.pendingHandover = null;
 
@@ -1461,19 +1216,15 @@ function setupGroupWebSocket(options) {
                                         if (
                                             roomState.hrWs?.readyState === WebSocket.OPEN
                                         ) {
-                                            // HR 還活著，透過輸出閘門執行最終結語
-                                            sendAuthorizedAiPayload(
-                                                'HR',
-                                                {
-                                                    realtimeInput: {
-                                                        text: finalHrPrompt
-                                                    }
-                                                },
-                                                {
-                                                    label: 'HR 最終結語',
-                                                    resetCurrentTurnText: true
+                                            roomState.isAiSpeaking = true;
+
+                                            // ⭐ HR 還活著，直接做結語
+                                            roomState.hrWs.send(JSON.stringify({
+                                                realtimeInput: {
+                                                    text: finalHrPrompt
                                                 }
-                                            );
+                                            }));
+
                                         } else {
 
                                             // ⭐ HR 已經被 Gemini 關掉 → 重連
@@ -1609,14 +1360,13 @@ function setupGroupWebSocket(options) {
                         }, 1800);
                     }
                 }
-                // ==========================================
-                // 🔒 AI 回合完成：關閉閘門、處理待執行指令
-                // ==========================================
-
-                if (response.serverContent?.turnComplete) {
-
-                    finishAiOutputTurn(role);
-
+                // ⭐ 只有目前真正掌權的 AI
+                // 才能結束自己的 speaking 狀態
+                if (
+                    response.serverContent?.turnComplete &&
+                    roomState.currentInterviewer === role
+                ) {
+                    roomState.isAiSpeaking = false;
                 }
 
                 if (
@@ -1972,24 +1722,7 @@ function setupGroupWebSocket(options) {
                         room.previousInterviewer =
                             room.currentInterviewer;
                     }
-                    // 真人插話時，關閉原本角色的音訊輸出許可
-                    if (room.previousInterviewer === 'HR') {
 
-                        if (room.hrOutputEnabled) {
-                            room.hrSuppressedTurn = true;
-                        }
-
-                        room.hrOutputEnabled = false;
-                    }
-
-                    if (room.previousInterviewer === 'MANAGER') {
-
-                        if (room.managerOutputEnabled) {
-                            room.managerSuppressedTurn = true;
-                        }
-
-                        room.managerOutputEnabled = false;
-                    }
                     room.currentInterviewer =
                         'HUMAN_INTERVENING';
 
@@ -2023,46 +1756,31 @@ function setupGroupWebSocket(options) {
                         `▶️ [真人插話結束] 恢復 AI：${room.currentInterviewer}`
                     );
 
-                    // 真人插話結束，恢復原本面試流程
-                    const resumeInstruction = `[系統指令]
-真人面試官插話結束，請繼續原本的團體面試流程。
-如果你要指定某位應徵者回答，最後一句必須嚴格使用：「現在請完整姓名回答。」
-(例如：「現在請王小明回答。」)
-不得使用任何其他點名方式。`;
+                    // 🌟 關鍵修復：改用 realtimeInput 發送系統指令，穩定喚醒 Gemini
+                    const resumeMsg = JSON.stringify({
+                        realtimeInput: {
+                            text: `[系統指令]
+                        真人面試官插話結束，請繼續原本的團體面試流程。
+                        如果你要指定某位應徵者回答，最後一句必須嚴格使用：「現在請完整姓名回答。」
+                        (例如：「現在請王小明回答。」)
+                        不得使用任何其他點名方式。`
+                        }
+                    });
 
                     if (
                         room.currentInterviewer === 'HR' &&
                         room.hrWs?.readyState === WebSocket.OPEN
                     ) {
-                        room.sendAuthorizedAiPayload?.(
-                            'HR',
-                            {
-                                realtimeInput: {
-                                    text: resumeInstruction
-                                }
-                            },
-                            {
-                                label: 'HR 真人插話後恢復'
-                            }
-                        );
+                        room.hrWs.send(resumeMsg);
                     }
 
                     if (
                         room.currentInterviewer === 'MANAGER' &&
                         room.managerWs?.readyState === WebSocket.OPEN
                     ) {
-                        room.sendAuthorizedAiPayload?.(
-                            'MANAGER',
-                            {
-                                realtimeInput: {
-                                    text: resumeInstruction
-                                }
-                            },
-                            {
-                                label: '主管真人插話後恢復'
-                            }
-                        );
+                        room.managerWs.send(resumeMsg);
                     }
+
                     return;
                 }
                 if (parsedMsg.type === 'hr_human_speech') {
