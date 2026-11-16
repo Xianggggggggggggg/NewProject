@@ -607,6 +607,19 @@ function setupGroupWebSocket(options) {
                 // 🔊 Gemini AI 音訊 → 廣播給目前房間所有前端
                 // ==========================================
                 if (
+                    role === 'MANAGER' &&
+                    response.serverContent?.modelTurn?.parts
+                ) {
+                    console.log("🔍 [主管音訊檢查]", {
+                        currentInterviewer: roomState.currentInterviewer,
+                        parts: response.serverContent.modelTurn.parts.map(p => ({
+                            hasInlineData: !!p.inlineData,
+                            mimeType: p.inlineData?.mimeType,
+                            hasText: !!p.text
+                        }))
+                    });
+                }
+                if (
                     response.serverContent?.modelTurn?.parts &&
                     roomState.currentInterviewer === role
                 ) {
