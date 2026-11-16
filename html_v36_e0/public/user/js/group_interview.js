@@ -199,7 +199,7 @@ function appendTranscript(role, text, ai_role = 'HR', candidateName = '應徵者
     if (lastMsg && lastMsg.className === (role === 'ai' ? 'ai-msg' : 'user-msg') && lastMsg.innerText.startsWith(prefix)) {
         // 把前面的標題濾掉，只接上新的字
         const cleanText = text.replace(prefix, '');
-        lastMsg.innerText += cleanText;
+        lastMsg.innerText += cleanText; 
         box.scrollTop = box.scrollHeight;
         return;
     }
@@ -263,7 +263,7 @@ async function playAudio(base64Data, targetId) {
 
         source.start(nextPlayTime);
         nextPlayTime += audioBuffer.duration;
-    } catch (err) {
+        } catch (err) {
         console.error("❌ [音訊系統] playAudio 發生錯誤:", err);
     }
 }
@@ -545,7 +545,7 @@ async function startGroupInterview() {
                 window.currentAiRole =
                     data.ai_role ||
                     window.currentAiRole ||
-                    '技術主管';
+                    '技術主管';                
                 let roleStr = window.currentAiRole.toUpperCase();
                 let targetId = roleStr.includes('HR') ? 'aiModel_HR' : 'aiModel_Tech';
 
@@ -563,8 +563,7 @@ async function startGroupInterview() {
                 console.log(
                     "⚠️ 收到 Gemini interrupted，但保留目前 AI 音訊播放 queue"
                 );
-            }
-        };
+            }        };
 
         // 麥克風音訊處理與 PCM 轉換傳輸
         audioAnalyser = audioContext.createAnalyser();
@@ -572,13 +571,13 @@ async function startGroupInterview() {
         processor = audioContext.createScriptProcessor(4096, 1, 1);
 
         processor.onaudioprocess = (e) => {
-            console.log("🎤 [麥克風] onaudioprocess 觸發", {
-                wsReady: ws?.readyState,
-                isSetupComplete
-            });
+            // (原本可能有一些 console.log)
             const aiAudioStillPlaying =
                 audioContext &&
                 nextPlayTime > audioContext.currentTime + 0.05;
+
+            // 🌟 1. 抓取目前麥克風的「真實開關狀態」
+            const isMicEnabled = myStream && myStream.getAudioTracks().length > 0 && myStream.getAudioTracks()[0].enabled;
 
             if (
                 ws &&
@@ -589,6 +588,11 @@ async function startGroupInterview() {
                 !window.isAIPaused &&
                 !window.aiPhaseFinished
             ) {
+                // 🌟 2. 核心防呆：如果使用者已經關麥了，直接 return 拒絕送出任何聲音給 AI！
+                if (!isMicEnabled) {
+                    return; 
+                }
+
                 const inputData = e.inputBuffer.getChannelData(0);
                 let rms = 0;
                 for (let i = 0; i < inputData.length; i++) {
@@ -604,11 +608,7 @@ async function startGroupInterview() {
                 }
 
                 const base64Audio = btoa(String.fromCharCode.apply(null, new Uint8Array(pcmData.buffer)));
-                console.log("📤 [語音] 正在傳送 PCM 到後端", {
-                    sessionId: window.currentSessionId,
-                    rms: rms,
-                    isMainSpeaker: isMainSpeaker
-                });
+                
                 ws.send(JSON.stringify({
                     sessionId: window.currentSessionId,
                     speakerActive: isMainSpeaker,
@@ -865,7 +865,7 @@ async function uploadInterviewResult(sessionId, analysisData) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 session_id: sessionId,
-                resume_id: RESUME_ID,
+                resume_id: RESUME_ID, 
                 finalEmotion,
                 finalFeedback,
                 finalConfidenceScore,
