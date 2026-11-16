@@ -423,32 +423,20 @@ function setupGroupWebSocket(options) {
                         roomState.pendingHandover = 'MANAGER_TO_HR';
                     }
 
-                    // 1. 先取得當前累積的語音內容
-                    const lastAiSpeech = role === 'HR' ? roomState.hrSpeechBuffer : roomState.managerSpeechBuffer;
+                    const lastAiSpeech =
+                        role === 'HR'
+                            ? roomState.hrSpeechBuffer
+                            : roomState.managerSpeechBuffer;
 
-                    // 2. 先把這段拿來切出最後半句（供自然收尾使用）
-                    const cleanLastSpeech = lastAiSpeech
-                        .split(/[。！？]/)
-                        .map(s => s.trim())
-                        .filter(s => s.length > 2)
-                        .pop() || "";
-
-                    // 3. 取得最後半句之後，才安全地清空 buffer
-                    if (role === 'HR') {
-                        if (roomState.hrFlushTimeout) {
-                            clearTimeout(roomState.hrFlushTimeout);
-                            roomState.hrFlushTimeout = null;
-                        }
-                        roomState.hrSpeechBuffer = "";
-                    } else {
-                        if (roomState.managerFlushTimeout) {
-                            clearTimeout(roomState.managerFlushTimeout);
-                            roomState.managerFlushTimeout = null;
-                        }
-                        roomState.managerSpeechBuffer = "";
-                    }
-
-                    console.log(`🧩 [交接] ${role} 剛才最後語意：`, cleanLastSpeech || "(沒有可承接內容)");
+                    // ⭐ 抓 Gemini 剛才最後正在形成的那一小段
+                    // 不再硬塞「這確實很有價值。」
+                    const cleanLastSpeech =
+                        lastAiSpeech
+                            .split(/[。！？]/)
+                            .map(s => s.trim())
+                            .filter(s => s.length > 2)
+                            .pop()
+                        || "";
 
                     console.log(
                         `🧩 [交接] ${role} 剛才最後語意：`,
@@ -1162,7 +1150,11 @@ function setupGroupWebSocket(options) {
                                 .replace(/([\u3400-\u9FFF])\s+(?=[\u3400-\u9FFF])/g, '$1')
                                 .replace(/\s+([，。！？、,.!?])/g, '$1');
 
-                            // ⭐ 在清空前，先把這段真正的講話者存起來
+                            const speechCandidateResumeId =
+                                roomState.userSpeechCandidateResumeId ||
+                                roomState.lastAudioCandidateResumeId ||
+                                null;
+
                             const speechCandidateName =
                                 roomState.userSpeechCandidateName ||
                                 roomState.lastAudioCandidateName ||
@@ -1170,12 +1162,28 @@ function setupGroupWebSocket(options) {
 
                             roomState.userSpeechBuffer = "";
 
-                            // ⭐ 這段話結束，解除鎖定
+                            // ⭐ 這段話結束，解除目前說話者鎖定
                             roomState.userSpeechCandidateResumeId = null;
                             roomState.userSpeechCandidateName = null;
 
                             if (!finalUserText) return;
 
+                            // ⭐ 保存最近一段完整回答，供 Function Calling 驗證
+                            roomState.lastCompletedSpeechCandidateResumeId =
+                                speechCandidateResumeId;
+
+                            roomState.lastCompletedSpeechCandidateName =
+                                speechCandidateName;
+
+                            roomState.lastCompletedSpeechText =
+                                finalUserText;
+
+                            roomState.lastCompletedSpeechAt =
+                                Date.now();
+
+                            console.log(
+                                `✅ [回答完成] ${speechCandidateName} (${speechCandidateResumeId})`
+                            );
                             console.log(
                                 `👤 [${speechCandidateName}] ${finalUserText}`
                             );
@@ -1411,9 +1419,16 @@ function setupGroupWebSocket(options) {
 
                                 // ⭐ 這一段回答一開始就把說話者鎖死
                                 if (!room.userSpeechCandidateResumeId) {
+
                                     room.userSpeechCandidateResumeId = clientWs.resumeId;
                                     room.userSpeechCandidateName =
                                         clientWs.candidateName || room.currentCandidateName;
+
+                                    // ⭐ 新回答開始，清除上一段已完成回答的紀錄
+                                    room.lastCompletedSpeechCandidateResumeId = null;
+                                    room.lastCompletedSpeechCandidateName = null;
+                                    room.lastCompletedSpeechText = "";
+                                    room.lastCompletedSpeechAt = null;
 
                                     console.log(
                                         `🎙️ 真正開始收音 → ${room.userSpeechCandidateName}`
@@ -1726,7 +1741,11 @@ function setupGroupWebSocket(options) {
                             // ⭐ 目前這一段逐字稿屬於誰
                             userSpeechCandidateResumeId: null,
                             userSpeechCandidateName: null,
-
+                            // ⭐ 最近一段已完成回答的候選人資訊，供交接驗證使用
+                            lastCompletedSpeechCandidateResumeId: null,
+                            lastCompletedSpeechCandidateName: null,
+                            lastCompletedSpeechText: "",
+                            lastCompletedSpeechAt: null,
                             hrRoundCount: 0, managerRoundCount: 0,
                             hrTargetRounds: 2,
                             managerTargetRounds: 2,
