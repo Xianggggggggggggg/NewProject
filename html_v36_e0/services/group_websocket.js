@@ -1213,13 +1213,18 @@ function setupGroupWebSocket(options) {
                         }, 1800);
                     }
                 }
-                // ⭐ 只有目前真正掌權的 AI
-                // 才能結束自己的 speaking 狀態
-                if (
-                    response.serverContent?.turnComplete &&
-                    roomState.currentInterviewer === role
-                ) {
-                    roomState.isAiSpeaking = false;
+                if (response.serverContent?.turnComplete) {
+                    console.log("🏁 [AI Turn Complete]", {
+                        role,
+                        currentInterviewer: roomState.currentInterviewer,
+                        isAiSpeakingBefore: roomState.isAiSpeaking
+                    });
+
+                    if (roomState.currentInterviewer === role) {
+                        roomState.isAiSpeaking = false;
+
+                        console.log("🔓 [AI 發言結束] 已解除音訊阻擋");
+                    }
                 }
 
                 if (
@@ -1392,8 +1397,23 @@ function setupGroupWebSocket(options) {
                                 room.isAiSpeaking &&
                                 parsedMsg.realtimeInput.audio
                             ) {
+                                if (!room.debugBlockedAudioLogged) {
+                                    console.log("🚫 [音訊被擋住]", {
+                                        isAiSpeaking: room.isAiSpeaking,
+                                        currentInterviewer: room.currentInterviewer,
+                                        isHRWrappingUp: room.isHRWrappingUp,
+                                        isManagerWrappingUp: room.isManagerWrappingUp,
+                                        aiPhaseFinished: room.aiPhaseFinished
+                                    });
+
+                                    room.debugBlockedAudioLogged = true;
+                                }
+
                                 return;
                             }
+
+                            // 音訊恢復正常傳送時，重置除錯紀錄
+                            room.debugBlockedAudioLogged = false;
                             // ⭐ 正常版 暫時更改
                             if (
                                 clientWs.clientType === 'candidate' &&
