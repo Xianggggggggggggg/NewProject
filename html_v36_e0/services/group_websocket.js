@@ -423,20 +423,32 @@ function setupGroupWebSocket(options) {
                         roomState.pendingHandover = 'MANAGER_TO_HR';
                     }
 
-                    const lastAiSpeech =
-                        role === 'HR'
-                            ? roomState.hrSpeechBuffer
-                            : roomState.managerSpeechBuffer;
+                    // 1. 先取得當前累積的語音內容
+                    const lastAiSpeech = role === 'HR' ? roomState.hrSpeechBuffer : roomState.managerSpeechBuffer;
 
-                    // ⭐ 抓 Gemini 剛才最後正在形成的那一小段
-                    // 不再硬塞「這確實很有價值。」
-                    const cleanLastSpeech =
-                        lastAiSpeech
-                            .split(/[。！？]/)
-                            .map(s => s.trim())
-                            .filter(s => s.length > 2)
-                            .pop()
-                        || "";
+                    // 2. 先把這段拿來切出最後半句（供自然收尾使用）
+                    const cleanLastSpeech = lastAiSpeech
+                        .split(/[。！？]/)
+                        .map(s => s.trim())
+                        .filter(s => s.length > 2)
+                        .pop() || "";
+
+                    // 3. 取得最後半句之後，才安全地清空 buffer
+                    if (role === 'HR') {
+                        if (roomState.hrFlushTimeout) {
+                            clearTimeout(roomState.hrFlushTimeout);
+                            roomState.hrFlushTimeout = null;
+                        }
+                        roomState.hrSpeechBuffer = "";
+                    } else {
+                        if (roomState.managerFlushTimeout) {
+                            clearTimeout(roomState.managerFlushTimeout);
+                            roomState.managerFlushTimeout = null;
+                        }
+                        roomState.managerSpeechBuffer = "";
+                    }
+
+                    console.log(`🧩 [交接] ${role} 剛才最後語意：`, cleanLastSpeech || "(沒有可承接內容)");
 
                     console.log(
                         `🧩 [交接] ${role} 剛才最後語意：`,
