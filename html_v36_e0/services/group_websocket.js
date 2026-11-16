@@ -592,12 +592,15 @@ function setupGroupWebSocket(options) {
                         roomState.hrWs.send(JSON.stringify({
                             realtimeInput: {
                                 text: `[系統指令]
-                                    請語音開場歡迎大家（${candidatesNamesStr}），並請第一位應徵者做自我介紹。
+                                        請用簡短、自然的方式開始面試。
 
-                                    你的最後一句必須逐字說：
-                                    「現在請${firstName}回答。」
+                                        只需要說：
+                                        「大家好，我是今天的 HR 面試官，歡迎各位參加面試。首先請大家進行簡短的自我介紹。」
 
-                                    不要使用其他點名句型。`
+                                        接著必須逐字說：
+                                        「現在請${firstName}回答。」
+
+                                        總長度控制在 3 句以內，不要額外介紹面試流程、公司背景或重複歡迎詞。`
                             }
                         }));
 
