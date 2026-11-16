@@ -120,8 +120,6 @@ function setupGroupWebSocket(options) {
             // 2. 將所有狀態集中管理於 roomState，確保多人共享同一份狀態
             roomState.currentInterviewer = 'HR';
             roomState.isInterviewEnded = false;
-            roomState.managerSetupComplete = false;
-            roomState.pendingManagerStartPrompt = null;
             roomState.isAiSpeaking = false;
             roomState.hrRoundCount = 0;
             roomState.managerRoundCount = 0;
@@ -352,30 +350,7 @@ function setupGroupWebSocket(options) {
                     }
                 }));
             });
-            // ⭐ 只有主管 Gemini 完成初始化後，才送出接手指令
-            const sendPendingManagerStart = () => {
-                const prompt = roomState.pendingManagerStartPrompt;
 
-                if (
-                    !prompt ||
-                    !roomState.managerSetupComplete ||
-                    roomState.managerWs?.readyState !== WebSocket.OPEN
-                ) {
-                    return;
-                }
-
-                roomState.pendingManagerStartPrompt = null;
-
-                roomState.managerWs.send(JSON.stringify({
-                    realtimeInput: {
-                        text: prompt
-                    }
-                }));
-
-                console.log(
-                    "🎤 [Gemini Manager] Setup Complete，正式開始技術面試"
-                );
-            };
             // 3. 定義處理 AI 回應的邏輯 (傳入 roomState 作為參數)
             const handleAiResponse = (role, data) => {
                 const response = JSON.parse(data.toString());
@@ -557,19 +532,7 @@ function setupGroupWebSocket(options) {
                         );
                     }
                 };
-                // ⭐ 主管初始化完成，才允許開始技術面試
-                if (response.setupComplete && role === 'MANAGER') {
 
-                    roomState.managerSetupComplete = true;
-
-                    console.log(
-                        "✅ [Gemini Manager] Setup Complete，可以開始技術面試"
-                    );
-
-                    sendPendingManagerStart();
-
-                    return;
-                }
                 if (response.setupComplete && role === 'HR') {
 
                     // ⭐ 如果這是最終結語用的 HR 重連就不要重新開場
@@ -909,132 +872,31 @@ function setupGroupWebSocket(options) {
 
                                         roomState.currentCandidateName =
                                             firstCandidate.name;
-                                        // ⭐ 先準備主管的第一段面試指令
-                                        const managerStartPrompt = `HR 已經正式交棒給你。
-請立刻開始技術面試，提出第一個完整的技術問題。
-問題必須與「${position}」職缺、應徵者履歷或實際技術能力相關。
-問題說完後，最後一句必須逐字說：
-「現在請${firstCandidate.name}回答。」`;
-
-                                        // ⭐ 先保存指令，等主管初始化完成再送出
-                                        roomState.pendingManagerStartPrompt = managerStartPrompt;
-
-                                        // ⭐ 等待期間鎖住候選人音訊，避免候選人聲音先送進主管
-                                        roomState.isAiSpeaking = true;
-
-                                        console.log(
-                                            "⏳ [主管接手] 等待 Gemini Manager Setup Complete"
-                                        );
 
                                         if (
-                                            roomState.managerWs?.readyState === WebSocket.OPEN
+                                            roomState.managerWs &&
+                                            roomState.managerWs.readyState === WebSocket.OPEN
                                         ) {
+                                            console.log(
+                                                "👨‍💻 [權限切換] 部門主管正式接手"
+                                            );
+                                            roomState.isAiSpeaking = true;
 
-                                            // 已經初始化就直接送，尚未初始化則由 setupComplete 自動送出
-                                            sendPendingManagerStart();
+                                            roomState.managerWs.send(JSON.stringify({
+                                                realtimeInput: {
+                                                    text: `HR 已經正式交棒給你。
+                                                        請立刻開始技術面試，提出第一個完整的技術問題。
+                                                        問題必須與「${position}」職缺、應徵者履歷或實際技術能力相關。
+                                                        問題說完後，最後一句必須逐字說：
+                                                        「現在請${firstCandidate.name}回答。」`
+                                                }
+                                            }));
 
                                         } else {
-
                                             console.warn(
                                                 "⚠️ Manager WebSocket 非 OPEN，重新建立主管連線",
                                                 roomState.managerWs?.readyState
                                             );
-
-                                            // ⭐ 重連後必須重新等待 setupComplete
-                                            roomState.managerSetupComplete = false;
-
-                                            const newManagerWs = new WebSocket(GEMINI_WS_URL);
-
-                                            roomState.managerWs = newManagerWs;
-
-                                            newManagerWs.on('open', () => {
-
-                                                console.log(
-                                                    "🟡 [Gemini Manager] 交接重連 WebSocket OPEN"
-                                                );
-
-                                                newManagerWs.send(JSON.stringify({
-                                                    setup: {
-                                                        model: MODEL_NAME,
-
-                                                        systemInstruction: {
-                                                            parts: [{
-                                                                text: managerPrompt
-                                                            }]
-                                                        },
-
-                                                        generationConfig: {
-                                                            responseModalities: ["AUDIO"],
-                                                            speechConfig: {
-                                                                voiceConfig: {
-                                                                    prebuiltVoiceConfig: {
-                                                                        voiceName: "Enceladus"
-                                                                    }
-                                                                }
-                                                            }
-                                                        },
-
-                                                        inputAudioTranscription: {},
-                                                        outputAudioTranscription: {},
-
-                                                        realtimeInputConfig: {
-                                                            automaticActivityDetection: {
-                                                                silenceDurationMs: 3000
-                                                            }
-                                                        }
-                                                    }
-                                                }));
-                                            });
-
-                                            const managerReconnectHandler = (data) => {
-
-                                                const managerResponse = JSON.parse(data.toString());
-
-                                                if (managerResponse.setupComplete) {
-
-                                                    console.log(
-                                                        "✅ [Gemini Manager] 重連完成，正式接手"
-                                                    );
-
-                                                    newManagerWs.off(
-                                                        'message',
-                                                        managerReconnectHandler
-                                                    );
-
-                                                    roomState.managerSetupComplete = true;
-
-                                                    newManagerWs.on(
-                                                        'message',
-                                                        data => handleAiResponse('MANAGER', data)
-                                                    );
-
-                                                    // ⭐ 初始化完成後才送出原本等待的指令
-                                                    sendPendingManagerStart();
-                                                }
-                                            };
-
-                                            newManagerWs.on(
-                                                'message',
-                                                managerReconnectHandler
-                                            );
-
-                                            newManagerWs.on('close', (code, reason) => {
-                                                console.error(
-                                                    "🔴 [Gemini Manager 重連] WebSocket 關閉",
-                                                    {
-                                                        code,
-                                                        reason: reason.toString()
-                                                    }
-                                                );
-                                            });
-
-                                            newManagerWs.on('error', err => {
-                                                console.error(
-                                                    "❌ [Gemini Manager 重連] WebSocket 錯誤:",
-                                                    err.message
-                                                );
-                                            });
-                                        }{                                          
 
                                             const newManagerWs =
                                                 new WebSocket(GEMINI_WS_URL);

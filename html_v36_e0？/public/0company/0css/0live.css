@@ -1,0 +1,33 @@
+/* 完全複製 interview.html 的超美排版 */
+      .interview-layout-multi {
+          display: flex; gap: 20px; max-width: 1600px; width: 95%; margin: 0 auto; height: 85vh; 
+      }
+      .video-grid {
+          flex: 3; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 20px; 
+      }
+      .video-card {
+          background-color: #2c2c2c; border-radius: 12px; overflow: hidden; position: relative;
+          display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      }
+      .video-label {
+          position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.6);
+          color: white; padding: 4px 10px; border-radius: 6px; font-size: 14px; z-index: 10;
+      }
+      .ai-video {
+          position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;
+          transform: scale(1.15); transform-origin: center center; transition: opacity 0.15s;
+      }
+      .ai-talk-video { opacity: 0; z-index: 2; }
+      .ai-talk-video.active { opacity: 1; }
+      #ai-interviewer-1 { background-color: #72acc5; }
+      #ai-interviewer-2 { background-color: #9c9a9a; }
+      .transcript-area {
+          flex: 1; background: rgba(255, 255, 255, 0.9); border-radius: 12px; padding: 20px;
+          overflow-y: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      }
+
+      /* 選擇房間的清單樣式 */
+      .room-card {
+        background: rgba(255, 255, 255, 0.9); border-radius: 12px; padding: 15px 20px;
+        display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 15px;
+      }
