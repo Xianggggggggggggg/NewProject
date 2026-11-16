@@ -120,6 +120,7 @@ function setupGroupWebSocket(options) {
             // 2. 將所有狀態集中管理於 roomState，確保多人共享同一份狀態
             roomState.currentInterviewer = 'HR';
             roomState.isInterviewEnded = false;
+            console.log("🟢 [狀態變更] AI turnComplete，isAiSpeaking = false");
             roomState.isAiSpeaking = false;
             roomState.hrRoundCount = 0;
             roomState.managerRoundCount = 0;
@@ -512,7 +513,9 @@ function setupGroupWebSocket(options) {
                     };
 
                     // ⭐ 防止候選人聲音在交接期間又灌進 Gemini
+                    console.log("🔴 [狀態變更] HR 開始發言，isAiSpeaking = true");
                     roomState.isAiSpeaking = true;
+                    
 
                     if (
                         role === 'HR' &&
@@ -552,8 +555,8 @@ function setupGroupWebSocket(options) {
                             finalPrompt &&
                             roomState.hrWs?.readyState === WebSocket.OPEN
                         ) {
-                            roomState.isAiSpeaking = true;
-                            roomState.hrWs.send(JSON.stringify({
+                            console.log("🔴 [狀態變更] HR 開始發言，isAiSpeaking = true");
+                            roomState.isAiSpeaking = true;                            roomState.hrWs.send(JSON.stringify({
                                 realtimeInput: {
                                     text: finalPrompt
                                 }
@@ -587,8 +590,8 @@ function setupGroupWebSocket(options) {
                         console.log(
                             "🎬 前端初始化完成，正式要求 HR 開場"
                         );
+                        console.log("🔴 [狀態變更] HR 開始發言，isAiSpeaking = true");
                         roomState.isAiSpeaking = true;
-
                         roomState.hrWs.send(JSON.stringify({
                             realtimeInput: {
                                 text: `[系統指令]
@@ -610,8 +613,8 @@ function setupGroupWebSocket(options) {
                     response.serverContent?.modelTurn?.parts &&
                     roomState.currentInterviewer === role
                 ) {
+                    console.log("🔴 [狀態變更] HR 開始發言，isAiSpeaking = true");
                     roomState.isAiSpeaking = true;
-
                     const audioMsg = JSON.stringify({
                         ...JSON.parse(data.toString()),
                         ai_role: role
@@ -880,8 +883,8 @@ function setupGroupWebSocket(options) {
                                             console.log(
                                                 "👨‍💻 [權限切換] 部門主管正式接手"
                                             );
+                                            console.log("🔴 [狀態變更] HR 開始發言，isAiSpeaking = true");
                                             roomState.isAiSpeaking = true;
-
                                             roomState.managerWs.send(JSON.stringify({
                                                 realtimeInput: {
                                                     text: `HR 已經正式交棒給你。
@@ -965,8 +968,8 @@ function setupGroupWebSocket(options) {
                                                         data => handleAiResponse('MANAGER', data)
                                                     );
 
+                                                    console.log("🔴 [狀態變更] HR 開始發言，isAiSpeaking = true");
                                                     roomState.isAiSpeaking = true;
-
                                                     newManagerWs.send(JSON.stringify({
                                                         realtimeInput: {
                                                             text: `HR 已經正式交棒給你。
@@ -1057,8 +1060,8 @@ function setupGroupWebSocket(options) {
                                         if (
                                             roomState.hrWs?.readyState === WebSocket.OPEN
                                         ) {
+                                            console.log("🔴 [狀態變更] HR 開始發言，isAiSpeaking = true");
                                             roomState.isAiSpeaking = true;
-
                                             // ⭐ HR 還活著，直接做結語
                                             roomState.hrWs.send(JSON.stringify({
                                                 realtimeInput: {
@@ -1221,8 +1224,8 @@ function setupGroupWebSocket(options) {
                     });
 
                     if (roomState.currentInterviewer === role) {
+                        console.log("🟢 [狀態變更] AI turnComplete，isAiSpeaking = false");
                         roomState.isAiSpeaking = false;
-
                         console.log("🔓 [AI 發言結束] 已解除音訊阻擋");
                     }
                 }
@@ -1235,8 +1238,8 @@ function setupGroupWebSocket(options) {
                 ) {
                     // ⭐ AI 面試階段正式結束
                     roomState.aiPhaseFinished = true;
-                    roomState.isAiSpeaking = false;
-                    roomState.currentInterviewer = 'WAITING_HUMAN';
+                    console.log("🟢 [狀態變更] AI turnComplete，isAiSpeaking = false");
+                    roomState.isAiSpeaking = false;                    roomState.currentInterviewer = 'WAITING_HUMAN';
 
                     setTimeout(() => saveToDatabase(), 2200);
 
