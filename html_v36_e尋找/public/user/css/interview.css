@@ -1,0 +1,100 @@
+/* 整體佈局：左邊視訊區，右邊對話區 */
+        .interview-layout-multi {
+            display: flex;
+            gap: 20px;
+            max-width: 1600px; 
+            width: 95%; 
+            margin: 0 auto;
+            height: 85vh; 
+        }
+
+        /* 視訊區：2x2 網格 */
+        .video-grid {
+            flex: 3; 
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 20px; 
+        }
+
+        /* 視訊框樣式 (影片容器) */
+        .video-card {
+            background-color: #2c2c2c;
+            border-radius: 12px;
+            overflow: hidden; /* 把放大超出的黑邊切掉 */
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        /* 視訊標籤 */
+        .video-label {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 14px;
+            z-index: 10;
+        }
+
+        /* 🌟 AI 面試官雙層影片共用樣式 (魔法核心) */
+        .ai-video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scale(1.15); /* 放大 1.15 倍，把黑邊擠出去 */
+            transform-origin: center center;
+            transition: opacity 0.15s ease-in-out; /* 0.15 秒淡入淡出 */
+        }
+
+        /* 🌟 控制說話影片的顯示與隱藏 */
+        .ai-talk-video {
+            opacity: 0; /* 預設隱藏 */
+            z-index: 2; /* 疊在待機影片上面 */
+        }
+        .ai-talk-video.active {
+            opacity: 1; /* 被 JS 加上 active 時顯示 */
+        }
+
+        /* 區分背景色 (萬一影片沒載入時顯示的底色) */
+        #ai-interviewer-1 { background-color: #72acc5; }
+        #ai-interviewer-2 { background-color: #9c9a9a; }
+
+        /* 面試者視訊鏡頭 */
+        #localVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); 
+        }
+
+        /* 右側文字紀錄區 */
+        .transcript-area {
+            flex: 1; 
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 12px;
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        /* 底部控制區 */
+        .controls {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        /* 調整 3D 模型元件的大小 */
+        model-viewer {
+            width: 100%;
+            height: 100%;
+            --poster-color: transparent;
+        }
